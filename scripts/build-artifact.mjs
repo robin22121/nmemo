@@ -1,3 +1,4 @@
+/* global console */
 // dist-artifact/의 빌드 결과를 claude.ai 아티팩트용 단일 HTML 조각으로 묶는다.
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
