@@ -1,0 +1,77 @@
+.board {
+  position: absolute; inset: 0; overflow: hidden; touch-action: none; cursor: grab;
+  background:
+    radial-gradient(1200px 800px at 20% 10%, rgba(255, 244, 214, 0.7), transparent 60%),
+    radial-gradient(900px 700px at 90% 90%, rgba(226, 238, 232, 0.6), transparent 60%),
+    var(--paper);
+}
+.board:active { cursor: grabbing; }
+.world { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; will-change: transform; }
+
+.cluster { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+.cluster-glow { position: absolute; left: 0; top: 0; filter: blur(10px); pointer-events: none; border-radius: 50%; }
+.cluster-label {
+  position: absolute; left: 0; transform: translateX(-50%); white-space: nowrap;
+  font-size: 15px; font-weight: 700; letter-spacing: -0.01em; padding: 2px 10px; border-radius: 999px;
+  color: color-mix(in srgb, var(--c) 45%, var(--ink)); background: rgba(255, 252, 245, 0.62);
+  backdrop-filter: blur(2px); cursor: pointer;
+}
+
+.card-pos { position: absolute; left: 0; top: 0; width: 0; height: 0; transition: opacity 0.3s; }
+.card-pos.dim { opacity: 0.35; }
+.card-float { position: absolute; left: 0; top: 0; }
+.card { position: absolute; left: 0; top: 0; cursor: pointer; user-select: none; -webkit-user-select: none; }
+.face-text {
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  font-size: 12.5px; line-height: 1.32; word-break: keep-all; overflow-wrap: anywhere;
+}
+
+/* idea: 포스트잇 */
+.face.idea {
+  width: 102px; min-height: 62px; padding: 9px 9px 10px; position: relative;
+  background: linear-gradient(165deg, #fff1a6 0%, #fde68a 60%, #f8dc72 100%);
+  box-shadow: var(--shadow); border-radius: 2px 2px 14px 2px;
+}
+.face.idea::after {
+  content: ''; position: absolute; right: 0; bottom: 0; width: 14px; height: 14px;
+  background: linear-gradient(135deg, transparent 50%, rgba(160, 120, 20, 0.22) 50%); border-radius: 0 0 14px 0;
+}
+
+/* emotion: 감정 색 번짐 원형 */
+.face.emotion {
+  width: 84px; height: 84px; border-radius: 50%; display: grid; place-items: center; padding: 14px;
+  background: radial-gradient(circle at 50% 50%,
+    color-mix(in srgb, var(--emo) 80%, white) 0%,
+    color-mix(in srgb, var(--emo) 62%, transparent) 55%,
+    color-mix(in srgb, var(--emo) 0%, transparent) 100%);
+  text-align: center;
+}
+.face.emotion .face-text { -webkit-line-clamp: 3; line-clamp: 3; font-size: 11.5px; line-height: 1.28; }
+
+/* photo: 둥근 썸네일 + 한 줄 */
+.face.photo {
+  width: 118px; display: flex; align-items: center; gap: 7px; padding: 5px 10px 5px 5px;
+  background: #fffdf7; border-radius: 999px; box-shadow: var(--shadow);
+}
+.photo-thumb { flex: none; width: 38px; height: 38px; border-radius: 50%; background: #d8d0bf center / cover; }
+.face.photo .face-text { font-size: 11.5px; line-height: 1.25; }
+
+/* todo: 체크 박스 카드 */
+.face.todo {
+  width: 110px; min-height: 52px; display: flex; align-items: center; gap: 8px; padding: 8px 9px;
+  background: #fffdf7; border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow);
+}
+.todo-check {
+  flex: none; width: 20px; height: 20px; border-radius: 6px; border: 2px solid #8a7f6b; background: #fff;
+  display: grid; place-items: center; color: #fff; padding: 0;
+}
+.todo-check svg { width: 14px; height: 14px; }
+.face.todo.done .todo-check { background: #6fa47c; border-color: #6fa47c; }
+.face.todo.done .face-text { text-decoration: line-through; color: var(--ink-soft); }
+.face.todo .face-text { font-size: 12px; }
+
+.overview-btn {
+  position: absolute; top: calc(10px + env(safe-area-inset-top, 0px)); right: 12px; z-index: 5;
+  padding: 7px 13px; border-radius: 999px; font-size: 13px; background: rgba(255, 252, 245, 0.85);
+  border: 1px solid var(--line); box-shadow: var(--shadow); backdrop-filter: blur(6px);
+}
