@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { renameTopic } from '../../src/core/actions';
 import { LocalAnalyzer } from '../../src/core/organize/local';
 import {
   applyReorganize, buildReorganizeRequest, isReorgDue, undoReorganize, MOVE_COOLDOWN_MS, REORG_INTERVAL_MS,
@@ -36,6 +37,23 @@ describe('재구성 트리거', () => {
     expect(isReorgDue(t, NOW)).toBe(true);
     expect(isReorgDue({ ...t, sinceReorg: 4 }, NOW)).toBe(false);
     expect(isReorgDue({ ...t, lastReorgAt: NOW - 1000 }, NOW)).toBe(false);
+  });
+});
+
+describe('사용자가 이름을 고치면', () => {
+  it('이름이 잠기고 10분 규칙과 상관없이 바로 재구성 대상이 된다', async () => {
+    await repo.addTopic(mkTopic({ id: 't', name: '카페', lastReorgAt: NOW - 1000, sinceReorg: 0 }));
+    await renameTopic(repo, 't', '  원두 탐방  ');
+    const t = (await repo.getTopic('t'))!;
+    expect(t.name).toBe('원두 탐방');
+    expect(t.nameLocked).toBe(true);
+    expect(isReorgDue(t, NOW)).toBe(true);
+  });
+
+  it('빈 이름은 무시한다', async () => {
+    await repo.addTopic(mkTopic({ id: 't', name: '카페' }));
+    await renameTopic(repo, 't', '   ');
+    expect((await repo.getTopic('t'))?.name).toBe('카페');
   });
 });
 

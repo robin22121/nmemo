@@ -11,14 +11,13 @@
 .cluster { position: absolute; left: 0; top: 0; width: 0; height: 0; }
 .cluster-glow { position: absolute; left: 0; top: 0; filter: blur(10px); pointer-events: none; border-radius: 50%; }
 .cluster-label {
-  position: absolute; left: 0; transform: translateX(-50%); white-space: nowrap;
+  position: absolute; left: 0; top: 0; white-space: nowrap;
   font-size: 15px; font-weight: 700; letter-spacing: -0.01em; padding: 2px 10px; border-radius: 999px;
   color: color-mix(in srgb, var(--c) 45%, var(--ink)); background: rgba(255, 252, 245, 0.62);
   backdrop-filter: blur(2px); cursor: pointer;
 }
 
-.card-pos { position: absolute; left: 0; top: 0; width: 0; height: 0; transition: opacity 0.3s; }
-.card-pos.dim { opacity: 0.35; }
+.card-pos { position: absolute; left: 0; top: 0; width: 0; height: 0; }
 .card-float { position: absolute; left: 0; top: 0; }
 .card { position: absolute; left: 0; top: 0; cursor: pointer; user-select: none; -webkit-user-select: none; }
 .face-text {
@@ -94,3 +93,14 @@
 @media (prefers-reduced-motion: reduce) {
   .card-float { animation: none; }
 }
+
+.related-lines { position: absolute; left: 0; top: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
+.card-pos.glow .face { box-shadow: 0 0 0 2px rgba(255, 214, 90, 0.9), 0 0 18px 4px rgba(255, 205, 70, 0.7); }
+.card-pos.glow .face.emotion { box-shadow: none; filter: drop-shadow(0 0 10px rgba(255, 205, 70, 0.95)); }
+.card-pos.focus .face { box-shadow: 0 0 0 2.5px #e7a600, 0 0 22px 6px rgba(255, 190, 40, 0.75); }
+.card-pos.focus .face.emotion { box-shadow: none; filter: drop-shadow(0 0 12px rgba(231, 166, 0, 0.95)); }
+.card-pos.dragging { z-index: 15; }
+.card-pos.dragging .face { box-shadow: var(--shadow-lift); }
+.card-pos.faded { pointer-events: none; }
+.board { -webkit-touch-callout: none; }
+.card, .cluster-label { -webkit-touch-callout: none; }

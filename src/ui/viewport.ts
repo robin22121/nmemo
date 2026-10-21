@@ -8,12 +8,17 @@ export const MAX_K = 2.4;
 
 export interface GestureHandlers {
   /** 짧게 눌렀다 뗌(이동 거의 없음) */
-  onTap?: (e: PointerEvent, world: { x: number; y: number }) => void;
+  onTap?: (target: Element, world: { x: number; y: number }) => void;
   /** 한 점을 누른 채 120ms 이상 가만히 있음 — 눌린 카드의 관련 메모 강조 등 */
   onPressStart?: (target: Element, world: { x: number; y: number }) => void;
   onPressEnd?: () => void;
-  /** 누르기 시작이 카드/무리 위인지 — 드래그 이동 등 확장용 */
+  /** 이 요소에서 시작한 누르기는 보드 제스처에서 제외(버튼 등) */
   shouldIgnore?: (target: Element) => boolean;
+  /** 450ms 가만히 누르면 들어 올림. true를 돌려주면 드래그 모드로 들어간다 */
+  onLift?: (target: Element, world: { x: number; y: number }) => boolean;
+  onDrag?: (world: { x: number; y: number }) => void;
+  onDrop?: (world: { x: number; y: number }) => void;
+  onDragCancel?: () => void;
 }
 
 /**
@@ -65,18 +70,21 @@ export function useViewport(handlers: GestureHandlers) {
     const el = containerRef.current;
     if (!el) return;
     const pointers = new Map<number, { x: number; y: number }>();
-    let gesture: 'none' | 'pending' | 'pan' | 'pinch' = 'none';
+    let gesture: 'none' | 'pending' | 'pan' | 'pinch' | 'drag' = 'none';
     let startPt = { x: 0, y: 0 };
     let startAt = 0;
     let startTarget: Element | null = null;
     let pressTimer: number | null = null;
     let pressed = false;
+    let liftTimer: number | null = null;
     let pinchPrev = { d: 0, cx: 0, cy: 0 };
     const SLOP = 8;
 
     const clearPress = () => {
       if (pressTimer) window.clearTimeout(pressTimer);
       pressTimer = null;
+      if (liftTimer) window.clearTimeout(liftTimer);
+      liftTimer = null;
       if (pressed) {
         pressed = false;
         h.current.onPressEnd?.();
@@ -102,8 +110,19 @@ export function useViewport(handlers: GestureHandlers) {
             h.current.onPressStart?.(startTarget, toWorld(startPt.x, startPt.y));
           }
         }, 120);
+        liftTimer = window.setTimeout(() => {
+          liftTimer = null;
+          if (gesture === 'pending' && startTarget && h.current.onLift?.(startTarget, toWorld(startPt.x, startPt.y))) {
+            if (pressTimer) window.clearTimeout(pressTimer);
+            pressTimer = null;
+            if (pressed) { pressed = false; h.current.onPressEnd?.(); }
+            gesture = 'drag';
+            el.dataset.moving = '1';
+          }
+        }, 450);
       } else if (pointers.size === 2) {
         clearPress();
+        if (gesture === 'drag') h.current.onDragCancel?.();
         gesture = 'pinch';
         el.dataset.moving = '1';
         const [a, b] = [...pointers.values()] as [{ x: number; y: number }, { x: number; y: number }];
@@ -116,6 +135,10 @@ export function useViewport(handlers: GestureHandlers) {
       if (!p) return;
       const dx = e.clientX - p.x, dy = e.clientY - p.y;
       p.x = e.clientX; p.y = e.clientY;
+      if (gesture === 'drag') {
+        h.current.onDrag?.(toWorld(e.clientX, e.clientY));
+        return;
+      }
       if (gesture === 'pending') {
         if (Math.hypot(e.clientX - startPt.x, e.clientY - startPt.y) > SLOP) {
           clearPress();
@@ -143,13 +166,19 @@ export function useViewport(handlers: GestureHandlers) {
     const up = (e: PointerEvent) => {
       if (!pointers.has(e.pointerId)) return;
       pointers.delete(e.pointerId);
+      if (gesture === 'drag') {
+        h.current.onDrop?.(toWorld(e.clientX, e.clientY));
+        gesture = 'none';
+        delete el.dataset.moving;
+        return;
+      }
       const wasPending = gesture === 'pending';
       const quick = performance.now() - startAt < 600;
       const wasPressed = pressed;
       clearPress();
       if (wasPending && pointers.size === 0 && (quick || wasPressed)) {
         const world = toWorld(e.clientX, e.clientY);
-        h.current.onTap?.(e, world);
+        h.current.onTap?.(startTarget ?? (e.target as Element), world);
       }
       if (pointers.size === 0) { gesture = 'none'; delete el.dataset.moving; }
       else if (pointers.size === 1) {
@@ -159,6 +188,7 @@ export function useViewport(handlers: GestureHandlers) {
 
     const cancel = (e: PointerEvent) => {
       pointers.delete(e.pointerId);
+      if (gesture === 'drag') h.current.onDragCancel?.();
       clearPress();
       if (pointers.size === 0) { gesture = 'none'; delete el.dataset.moving; }
     };
@@ -174,12 +204,15 @@ export function useViewport(handlers: GestureHandlers) {
       setView({ k, x: ox - (ox - v.x) * f, y: oy - (oy - v.y) * f });
     };
 
+    const noMenu = (e: Event) => e.preventDefault();
+    el.addEventListener('contextmenu', noMenu);
     el.addEventListener('pointerdown', down);
     el.addEventListener('pointermove', move);
     el.addEventListener('pointerup', up);
     el.addEventListener('pointercancel', cancel);
     el.addEventListener('wheel', wheel, { passive: false });
     return () => {
+      el.removeEventListener('contextmenu', noMenu);
       el.removeEventListener('pointerdown', down);
       el.removeEventListener('pointermove', move);
       el.removeEventListener('pointerup', up);

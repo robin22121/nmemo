@@ -63,5 +63,5 @@
 .toast {
   position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--bar-h) + 90px + var(--safe-b)); z-index: 80;
   background: rgba(58, 50, 38, 0.92); color: #fff; padding: 10px 16px; border-radius: 14px; font-size: 14px;
-  max-width: 88vw; text-align: center;
+  width: max-content; max-width: 92vw; text-align: left;
 }
