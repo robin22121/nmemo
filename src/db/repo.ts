@@ -12,6 +12,8 @@ export function pickTopicColor(topics: Pick<Topic, 'color'>[]): string {
 }
 
 export interface NewMemoInput {
+  /** 입력 바 미리보기와 같은 id를 쓰면 날아가는 애니메이션이 이어진다 */
+  id?: string;
   input: InputType;
   text: string;
   photo?: Blob;
@@ -20,7 +22,7 @@ export interface NewMemoInput {
 /** 입력 즉시 pending으로 저장한다. 결정할 것은 없다. */
 export async function addMemo(input: NewMemoInput): Promise<Memo> {
   const memo: Memo = {
-    id: crypto.randomUUID(),
+    id: input.id ?? crypto.randomUUID(),
     createdAt: Date.now(),
     input: input.input,
     text: input.text.trim(),

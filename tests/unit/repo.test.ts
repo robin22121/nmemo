@@ -17,6 +17,14 @@ describe('repo', () => {
     expect(saved?.attempts).toBe(0);
   });
 
+  it('미리 정한 id를 그대로 쓰고 사진 메모는 비어 있는 글로 저장된다', async () => {
+    const m = await addMemo({ id: 'fixed-id', input: 'photo', text: '', photo: new Blob(['x'], { type: 'image/jpeg' }) });
+    expect(m.id).toBe('fixed-id');
+    const saved = await getDb().memos.get('fixed-id');
+    expect(saved?.input).toBe('photo');
+    expect(saved?.status).toBe('pending');
+  });
+
   it('주제를 옮기면 잠기고, 비게 된 주제는 지워진다', async () => {
     const a = await addMemo({ input: 'text', text: 'a' });
     const t1 = await moveMemoToNewTopic(a.id, '첫 주제');
