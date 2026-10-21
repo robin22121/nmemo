@@ -38,6 +38,8 @@ export function useViewport(handlers: GestureHandlers) {
     if (!el) return;
     const { x, y, k } = view.current;
     el.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${k})`;
+    // 멀리서 볼 때 무리 이름이 작아지지 않게 역배율(최대 1.9배)
+    el.style.setProperty('--ls', String(Math.min(1.9, Math.max(1, 0.9 / k))));
   }, []);
 
   const setView = useCallback((v: View) => {

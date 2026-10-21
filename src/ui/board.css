@@ -76,7 +76,7 @@
 }
 
 .cluster-fx, .card-fx { position: absolute; left: 0; top: 0; }
-.cluster-name { display: inline-block; }
+.cluster-name { display: inline-block; transform: scale(var(--ls, 1)); transform-origin: 50% 0; }
 .flight-layer { position: absolute; inset: 0; pointer-events: none; z-index: 20; overflow: hidden; }
 .flight-card { position: absolute; left: 0; top: 0; filter: drop-shadow(0 10px 14px rgba(58, 50, 38, 0.25)); }
 

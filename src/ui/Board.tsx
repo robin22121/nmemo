@@ -351,7 +351,7 @@ export function Board({ selectedMemoId, openClusterId, onSelectMemo, onOpenClust
   }, [memos, layout, containerRef]);
 
   // ---------- 관련 메모 강조 / 무리 상세 ----------
-  const focusId = drag ? null : (pressedId ?? selectedMemoId);
+  const focusId = drag?.id ?? pressedId ?? selectedMemoId;
   const related = useMemo(() => {
     const m = new Map<string, number>();
     if (!focusId) return m;
@@ -492,7 +492,7 @@ export function Board({ selectedMemoId, openClusterId, onSelectMemo, onOpenClust
             />
           ) : null;
         })}
-        {lineTargets && lineTargets.targets.length > 0 && <RelatedLines key={focusId} from={lineTargets.from} targets={lineTargets.targets} />}
+        {!drag && lineTargets && lineTargets.targets.length > 0 && <RelatedLines key={focusId} from={lineTargets.from} targets={lineTargets.targets} />}
         {cardEls}
       </div>
       <div className="flight-layer" aria-hidden>

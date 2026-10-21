@@ -8,7 +8,8 @@ export interface ToastState {
 
 export function Toast({ toast }: { toast: ToastState | null }) {
   return (
-    <AnimatePresence>
+    <div className="toast-wrap">
+    <AnimatePresence mode="wait">
       {toast && (
         <motion.div
           key={toast.id}
@@ -27,5 +28,6 @@ export function Toast({ toast }: { toast: ToastState | null }) {
         </motion.div>
       )}
     </AnimatePresence>
+    </div>
   );
 }
