@@ -7,8 +7,9 @@
 
 .pending-tray {
   display: flex; gap: 8px; padding: 8px 14px; overflow-x: auto; scrollbar-width: none;
-  min-height: 52px; align-items: center;
+  min-height: 0; align-items: center;
 }
+.pending-tray[data-empty='false'] { min-height: 52px; }
 .pending-tray::-webkit-scrollbar { display: none; }
 .pending-card {
   flex: 0 0 auto; max-width: 170px; display: flex; align-items: center; gap: 6px;
@@ -44,10 +45,6 @@
 .composer textarea {
   flex: 1; border: 0; outline: 0; resize: none; background: transparent; max-height: 120px;
   field-sizing: content; min-height: 24px; line-height: 1.45; padding: 6px 0; font-size: 16px;
-}
-.draft-preview {
-  position: absolute; left: 12px; top: 8px; right: 60px; height: 0; overflow: hidden; opacity: 0;
-  pointer-events: none;
 }
 .send-btn {
   width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center;

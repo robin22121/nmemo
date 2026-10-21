@@ -75,3 +75,22 @@
   padding: 7px 13px; border-radius: 999px; font-size: 13px; background: rgba(255, 252, 245, 0.85);
   border: 1px solid var(--line); box-shadow: var(--shadow); backdrop-filter: blur(6px);
 }
+
+.cluster-fx, .card-fx { position: absolute; left: 0; top: 0; }
+.cluster-name { display: inline-block; }
+.flight-layer { position: absolute; inset: 0; pointer-events: none; z-index: 20; overflow: hidden; }
+.flight-card { position: absolute; left: 0; top: 0; filter: drop-shadow(0 10px 14px rgba(58, 50, 38, 0.25)); }
+
+/* 평소: 카드가 아주 느리게 떠다님(±2.5px). transform만 쓴다. 화면 밖·이동 중·감소 모션에서는 멈춘다. */
+.card-float { animation: drift var(--fp, 8s) ease-in-out var(--fd, 0s) infinite; }
+@keyframes drift {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  25% { transform: translate3d(2.4px, -2.2px, 0); }
+  50% { transform: translate3d(-1.6px, 2.6px, 0); }
+  75% { transform: translate3d(-2.5px, -1.4px, 0); }
+}
+.card-pos.offscreen .card-float { animation: none; }
+.board[data-moving='1'] .card-float { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .card-float { animation: none; }
+}

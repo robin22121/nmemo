@@ -105,6 +105,7 @@ export function useViewport(handlers: GestureHandlers) {
       } else if (pointers.size === 2) {
         clearPress();
         gesture = 'pinch';
+        el.dataset.moving = '1';
         const [a, b] = [...pointers.values()] as [{ x: number; y: number }, { x: number; y: number }];
         pinchPrev = { d: Math.hypot(a.x - b.x, a.y - b.y), cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
       }
@@ -119,6 +120,7 @@ export function useViewport(handlers: GestureHandlers) {
         if (Math.hypot(e.clientX - startPt.x, e.clientY - startPt.y) > SLOP) {
           clearPress();
           gesture = 'pan';
+          el.dataset.moving = '1';
         } else return;
       }
       if (gesture === 'pan' && pointers.size === 1) {
@@ -149,7 +151,7 @@ export function useViewport(handlers: GestureHandlers) {
         const world = toWorld(e.clientX, e.clientY);
         h.current.onTap?.(e, world);
       }
-      if (pointers.size === 0) gesture = 'none';
+      if (pointers.size === 0) { gesture = 'none'; delete el.dataset.moving; }
       else if (pointers.size === 1) {
         gesture = 'pan';
       }
@@ -158,7 +160,7 @@ export function useViewport(handlers: GestureHandlers) {
     const cancel = (e: PointerEvent) => {
       pointers.delete(e.pointerId);
       clearPress();
-      if (pointers.size === 0) gesture = 'none';
+      if (pointers.size === 0) { gesture = 'none'; delete el.dataset.moving; }
     };
 
     const wheel = (e: WheelEvent) => {

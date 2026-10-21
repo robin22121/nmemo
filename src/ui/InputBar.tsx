@@ -14,7 +14,6 @@ interface Props {
 export function InputBar({ notify, onSaved }: Props) {
   const [composing, setComposing] = useState(false);
   const [text, setText] = useState('');
-  const [draftId, setDraftId] = useState(() => crypto.randomUUID());
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState('');
   const textRef = useRef<HTMLTextAreaElement>(null);
@@ -26,10 +25,10 @@ export function InputBar({ notify, onSaved }: Props) {
   }, [composing]);
 
   const save = useCallback(
-    async (input: 'text' | 'voice', value: string, id?: string) => {
+    async (input: 'text' | 'voice', value: string) => {
       const v = value.trim();
       if (!v) return;
-      await addMemo({ id, input, text: v });
+      await addMemo({ input, text: v });
       onSaved?.();
     },
     [onSaved],
@@ -38,11 +37,9 @@ export function InputBar({ notify, onSaved }: Props) {
   const submitText = async () => {
     const v = text.trim();
     if (!v) return;
-    const id = draftId;
     setText('');
     setComposing(false);
-    setDraftId(crypto.randomUUID());
-    await save('text', v, id);
+    await save('text', v);
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -122,9 +119,6 @@ export function InputBar({ notify, onSaved }: Props) {
             exit={{ opacity: 0, y: 16 }}
             transition={{ type: 'spring', stiffness: 300, damping: 26 }}
           >
-            <motion.div layoutId={`memo-${draftId}`} className="draft-preview" aria-hidden>
-              {text.trim() || '…'}
-            </motion.div>
             <textarea
               ref={textRef}
               data-testid="composer-input"
