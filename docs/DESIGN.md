@@ -109,6 +109,45 @@ interface Analyzer { analyze(req: AnalyzeRequest): Promise<AnalyzeResult> }
 - 개발: Vite 플러그인 미들웨어로 `/api/*`를 같은 핸들러에 연결(`npm run dev`에서 바로 동작).
 - 배포: `functions/`에 Firebase Cloud Functions(2세대, Node 22) 래퍼를 두되, 루트 `firebase.json`은 수정하지 않는다. 배포 연결은 2차 작업으로 README에 적는다.
 
+### 5.1 주제 재구성 (`src/organize/reorganize.ts`)
+
+주제는 고정되지 않는다. 무리의 중심이 바뀌면 주제 이름이 바뀌고, 더는 맞지 않는 메모는 다른 무리로 옮긴다.
+예: '마라톤' 무리에 황영조·마라톤화·가민이 있다가 용품 메모가 늘어 주제가 '운동용품'이 되면, 황영조는 더 맞는 무리(없으면 새 주제)로 빠진다.
+
+데이터 추가:
+```ts
+interface Topic { /* 기존 필드 + */
+  centerKeywords: string[]; // 무리의 중심 키워드
+  nameLocked: boolean;      // 사용자가 이름을 직접 정함 → AI가 이름을 바꾸지 않음, 이 이름을 중심으로 삼음
+  lastReorgAt: number;
+  sinceReorg: number;       // 마지막 재구성 뒤 들어온 메모 수
+}
+interface Move { id: string; batchId: string; memoId: string; fromTopicId: string; toTopicId: string; reason: string; at: number }
+```
+Dexie 스키마 v2로 올리고(`moves: 'id, batchId, memoId, at'`), 기존 주제에 기본값 채우는 upgrade 함수 작성.
+
+트리거: 주제에 메모가 들어올 때 sinceReorg+1 → 5 이상이면 재구성 대기열에 올림. 사용자가 주제 이름을 바꾸면 즉시(nameLocked=true). 같은 주제는 10분에 한 번만(이름 변경 트리거는 예외). 정돈 대기열과 같은 큐에서 정돈 작업 뒤에 처리.
+
+분석기 인터페이스 확장:
+```ts
+interface ReorganizeRequest {
+  topic: { id: string; name: string; summary: string; nameLocked: boolean };
+  members: { id: string; summary: string; keywords: string[]; locked: boolean }[]; // 그 주제의 메모 전부(최대 80)
+  otherTopics: { id: string; name: string; summary: string; centerKeywords: string[] }[];
+}
+interface ReorganizeResult {
+  topic: { name: string; summary: string; centerKeywords: string[] }; // nameLocked면 name은 무시
+  moves: { memoId: string; to: { existingId: string } | { newName: string; newSummary: string }; fit: number; reason: string }[];
+}
+interface Analyzer { analyze(...); reorganize(req: ReorganizeRequest): Promise<ReorganizeResult> }
+```
+- Remote: `POST /api/reorganize`, 같은 모델·tool use 방식. 프롬프트: "무리 전체를 보고 지금의 중심 주제를 다시 정하고, 새 중심에서 멀어진 메모만 골라 더 맞는 기존 주제나 새 주제로 보낸다. 확실하지 않으면 옮기지 않는다."
+- Local: 멤버 키워드 빈도 상위로 centerKeywords·이름 갱신(nameLocked면 이름 유지하고 이름을 키워드에 포함). 메모별로 현재 중심과의 유사도 vs 다른 주제 중심과의 유사도 비교.
+- 흔들림 방지(적용 단계에서 강제, 분석기 결과를 그대로 믿지 않음): locked 메모 제외, `fit` 0.6 미만은 버림, Local은 다른 주제 유사도가 현재보다 0.15 이상 높을 때만, 한 번에 무리의 40% 넘게 빠지지 않게(넘으면 fit 높은 순으로 자름). 옮긴 메모는 30분 동안 다시 옮기지 않음.
+- 적용: 한 트랜잭션에서 주제 갱신 + 메모 topicId 변경 + Move 기록(같은 batchId) + 빈 주제 삭제.
+- 알림: 보드 하단 토스트 6초 — "'마라톤'이 '운동용품'이 되면서 메모 1개가 '인물'로 옮겨졌어요 · 되돌리기". 되돌리기 = 그 batchId의 Move를 역으로 적용하고 이름도 복원(복원용으로 이전 이름·요약을 batch에 함께 저장), 되돌린 메모는 topicLocked=true.
+- 테스트: 마라톤 예시 그대로 LocalAnalyzer 단위 테스트(황영조만 빠지고 마라톤화·가민은 남음), locked 메모 유지, 40% 상한, 되돌리기.
+
 ## 6. 화면 (`src/ui/`)
 
 - **보드**(시작 화면): 전체 화면 캔버스. 두 손가락 확대/이동(데스크톱은 휠/드래그). 주제 무리가 여기저기 흩어져 있고, 각 무리는 이름 라벨 + 옹기종기 모인 카드들. 무리 배경은 주제 색의 아주 옅은 번짐(radial-gradient, blur)으로 경계를 암시만 한다(테두리 박스 금지).
@@ -150,9 +189,14 @@ interface Analyzer { analyze(req: AnalyzeRequest): Promise<AnalyzeResult> }
 | 카드 누르기 | 관련 카드가 2~6px 끌려오며 빛나고, 가는 곡선으로 연결 / 나머지 opacity 0.35 | SVG path `pathLength` 0→1 그리기 |
 | 카드 끌기 | 카드가 손가락을 따라오고(약간 커지고 그림자), 다른 무리 위에선 그 무리가 부풀어 받아줄 준비, 놓으면 흡수 | framer `drag` + 히트 테스트 |
 | 무리 열기 | 무리가 확대되며 카드가 펼쳐짐, 닫으면 다시 모임 | 공유 `layoutId` 전환 |
+| 주제 재구성 | 무리 이름이 스르륵 바뀌고(크로스페이드), 맞지 않는 카드가 무리에서 떨어져 나와 새 무리로 날아감, 남은 카드는 빈자리를 메우며 다시 모임 | 이름 크로스페이드 → 카드마다 80ms 시차로 출발(포물선) → d3-force 재계산 결과로 나머지 spring 이동. 되돌리기는 같은 동작의 역재생 |
 
 - `prefers-reduced-motion: reduce`이면: 떠다니기·출렁임·포물선 끔, 위치 변경은 짧은 opacity 크로스페이드.
 - 목표: 카드 200개, 중급 안드로이드에서 끊김 없이(60fps 근처). 떠다니기는 화면 밖 카드에선 끈다.
+
+## 8.1 React Native 이전 대비
+
+v1은 PWA지만, 나중에 React Native로 옮길 수 있다. 그래서 `src/core/`(아래 db 제외 로직: organize, reorganize, layout, types, validate)는 **React·DOM·브라우저 API를 import하지 않는 순수 TypeScript**로 작성한다. 저장소 접근은 `Repo` 인터페이스로 주입하고 Dexie 구현은 `src/db/`에 둔다. 화면(`src/ui/`)과 애니메이션(`src/motion/`)만 플랫폼에 묶인다. ESLint `no-restricted-imports`로 core가 react/dexie/framer-motion을 import하지 못하게 막는다.
 
 ## 9. 폴더 구조(권장)
 
