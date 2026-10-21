@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { getQueue } from './organize/runtime';
 import { Board } from './ui/Board';
 import { InputBar } from './ui/InputBar';
 import { PendingTray } from './ui/PendingTray';
@@ -18,12 +19,20 @@ export function App() {
   }, []);
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
+  useEffect(() => {
+    const q = getQueue();
+    q.start();
+    return () => q.stop();
+  }, []);
+
+  const wake = useCallback(() => getQueue().wake(), []);
+
   return (
     <div className="app">
       <Board />
       <div className="dock">
-        <PendingTray memos={pending} />
-        <InputBar notify={notify} />
+        <PendingTray memos={pending} onRetry={(id) => void getQueue().retry(id)} />
+        <InputBar notify={notify} onSaved={wake} />
       </div>
       <Toast message={toast} />
     </div>

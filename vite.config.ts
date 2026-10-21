@@ -1,10 +1,12 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { kkeujeogimApi } from './server/devMiddleware';
 
 export default defineConfig({
   plugins: [
     react(),
+    kkeujeogimApi(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg', 'icon-192.png', 'icon-512.png'],

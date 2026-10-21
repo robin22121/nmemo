@@ -235,3 +235,8 @@ kkeujeogim/
 ## 11. 결정 기록
 
 - (구현 중 설계와 달라진 점을 여기에 적는다.)
+- **core 분리(8.1)**: 순수 로직은 `src/core/`(types, repo 인터페이스, actions, palette, organize/{types,validate,local,apply,queue,reorganize}, 이후 layout)에 둔다. §9의 `src/organize/`에는 브라우저 어댑터만 남긴다(`remote.ts`=fetch, `photo.ts`=Blob→base64, `runtime.ts`=대기열 조립). `src/db/`는 Dexie 스키마와 `DexieRepo`(Repo 구현), UI용 얇은 래퍼 `repo.ts`. ESLint가 core의 react/dexie/framer-motion import와 브라우저 전역(window, document, fetch 등) 사용을 막는다. 사진은 `PhotoReader`, 온라인 신호는 `onWakeSignal`로 주입한다.
+- **moves 외에 `batches` 테이블 추가(Dexie v2)**: 5.1은 "복원용 이전 이름·요약을 batch에 저장"이라고 했지만 테이블 목록에 batch가 없어, `batches: 'id, topicId, at'`를 함께 만들었다(이름만 바뀌고 메모가 안 옮겨진 재구성도 되돌릴 수 있게).
+- **사용자 이름 변경 → 즉시 재구성**: `renameTopic`이 `nameLocked=true, lastReorgAt=0, sinceReorg=99`를 써서 같은 대기열 규칙(`isReorgDue`)으로 곧바로 처리되게 했다(10분 규칙의 예외를 별도 플래그 없이 표현).
+- **되돌리기**: 재구성 뒤 사용자가 직접 다른 곳으로 옮긴 메모는 되돌리기가 건드리지 않는다. 되돌린 이름은 잠그지 않는다(nameLocked 변화 없음).
+- **서버 모델 호출**: 구조화 출력은 `tool_choice: {type:'tool'}` 강제 + 이름 있는 도구. 모델 문서상 이 모델은 강제 tool 선택을 받고, thinking·샘플링 파라미터는 보내지 않는다.
