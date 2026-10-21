@@ -1,0 +1,37 @@
+:root {
+  --paper: #f6f1e7;
+  --paper-2: #efe8d9;
+  --ink: #3a3226;
+  --ink-soft: #7a6f5d;
+  --line: rgba(58, 50, 38, 0.14);
+  --postit: #fde68a;
+  --postit-edge: #f4cf5a;
+  --shadow: 0 1px 2px rgba(58, 50, 38, 0.12), 0 6px 14px rgba(58, 50, 38, 0.1);
+  --shadow-lift: 0 4px 8px rgba(58, 50, 38, 0.18), 0 18px 34px rgba(58, 50, 38, 0.22);
+  --bar-h: 64px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --font: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.4;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; padding: 0; }
+textarea, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid #5b7cfa; outline-offset: 2px; }
+
+.app { position: fixed; inset: 0; overflow: hidden; }
+
+.empty-hint {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  pointer-events: none; color: var(--ink-soft); font-size: 17px; text-align: center; padding: 0 40px;
+}

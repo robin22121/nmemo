@@ -1,0 +1,10 @@
+node_modules
+dist
+dev-dev
+dev-dist
+test-results
+playwright-report
+.env
+.env.local
+functions/node_modules
+functions/lib
