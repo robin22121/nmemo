@@ -8,7 +8,7 @@ import './styles/global.css';
 
 async function boot() {
   const params = new URLSearchParams(location.search);
-  const demo = params.get('demo') === '1';
+  const demo = params.get('demo') === '1' || import.meta.env.VITE_DEMO_DEFAULT === '1';
   const name = demo ? 'kkeujeogim-demo' : 'kkeujeogim';
   if (demo && params.get('reset') === '1') await initDb(name).delete();
   initDb(name);

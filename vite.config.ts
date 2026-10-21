@@ -3,10 +3,13 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 import { kkeujeogimApi } from './server/devMiddleware';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  // mode 'artifact': claude.ai 아티팩트로 올리는 단일 HTML용 빌드(서비스 워커 없음, 데모 데이터 기본)
+  base: mode === 'artifact' ? './' : '/',
   plugins: [
     react(),
     kkeujeogimApi(),
+    mode !== 'artifact' &&
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg', 'icon-192.png', 'icon-512.png'],
@@ -35,4 +38,4 @@ export default defineConfig({
     }),
   ],
   server: { host: true },
-});
+}));
