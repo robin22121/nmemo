@@ -1,9 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// 지구본 보드 시험판(?globe=1): 켜면 쓰기 모드 → 저장 → 정돈되면 제 주제로 돌아 고리에 붙는다
+// 지구본 보드(기본 화면): 켜면 쓰기 모드 → 저장 → 정돈되면 제 주제로 돌아 고리에 붙는다
 
 async function openGlobe(page: Page) {
-  await page.goto('/?demo=1&globe=1&reset=1');
+  await page.goto('/?demo=1&reset=1');
   await expect(page.getByTestId('board-info')).toHaveAttribute('data-cards', '40');
 }
 

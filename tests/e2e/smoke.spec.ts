@@ -4,7 +4,7 @@ const info = (page: Page) => page.getByTestId('board-info');
 const clusters = async (page: Page) => Number(await info(page).getAttribute('data-clusters'));
 
 async function openDemo(page: Page) {
-  await page.goto('/?demo=1&reset=1');
+  await page.goto('/?globe=0&demo=1&reset=1');
   await expect(info(page)).toHaveAttribute('data-cards', '40');
 }
 
@@ -21,7 +21,7 @@ test('서버는 키가 없으면 ai:false로 알린다(Local 분석기 자동 �
 });
 
 test('빈 상태에는 안내 문구가 보인다', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?globe=0');
   await expect(page.getByText('떠오르는 걸 아무렇게나 던져보세요')).toBeVisible();
 });
 

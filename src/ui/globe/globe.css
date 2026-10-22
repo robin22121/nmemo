@@ -1,4 +1,4 @@
-/* 지구본(천구) 보드 프로토타입(?globe=1). .board의 배경·touch-action:none을 그대로 쓴다. */
+/* 지구본(천구) 보드(기본 화면, ?globe=0이면 평면 보드). .board의 배경·touch-action:none을 그대로 쓴다. */
 .g-board { user-select: none; -webkit-user-select: none; }
 .g-stage { position: absolute; inset: 0; isolation: isolate; }
 .g-board[data-blur='1'] .g-stage { filter: blur(6px); }

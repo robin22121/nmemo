@@ -5,7 +5,7 @@ const OUT = 'docs/screenshots';
 const info = (page: Page) => page.getByTestId('board-info');
 
 async function openDemo(page: Page) {
-  await page.goto('/?demo=1&reset=1');
+  await page.goto('/?globe=0&demo=1&reset=1');
   await expect(info(page)).toHaveAttribute('data-cards', '40');
   await page.waitForTimeout(1200);
 }

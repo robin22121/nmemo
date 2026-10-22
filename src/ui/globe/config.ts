@@ -1,8 +1,8 @@
-/** 지구본 보드 프로토타입 스위치(`?globe=1`)와 움직임 상수. 배치·투영 상수는 core/layout/globe.ts의 GLOBE. */
+/** 지구본 보드 스위치(기본 켬, `?globe=0`이면 평면 보드)와 움직임 상수. 배치·투영 상수는 core/layout/globe.ts의 GLOBE. */
 
 const params = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
 
-export const GLOBE_ON = params.get('globe') === '1';
+export const GLOBE_ON = params.get('globe') !== '0';
 
 /** 앱을 켜면 쓰기 모드(흐린 지구본 앞 큰 쓰기 칸). 시험용으로 `&write=0`이면 바로 보드 */
 export const WRITE_START = params.get('write') !== '0';

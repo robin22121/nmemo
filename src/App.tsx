@@ -146,7 +146,7 @@ export function App() {
             void renameTopic(openCluster, name).then(wake);
           }}
         />
-        {/* 지구본 보드(?globe=1)는 아래 입력 바 대신 쓰기 칸·대기 칩을 직접 그린다 */}
+        {/* 지구본 보드(기본, ?globe=0이 아니면)는 아래 입력 바 대신 쓰기 칸·대기 칩을 직접 그린다 */}
         {!GLOBE_ON && (
           <div className="dock">
             <PendingTray memos={pending} onRetry={(id) => void getQueue().retry(id)} />
