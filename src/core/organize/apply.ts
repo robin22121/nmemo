@@ -55,6 +55,7 @@ export async function applyResult(
             now,
             result.keywords,
             'newColor' in result.topic ? result.topic.newColor : undefined,
+            'newShape' in result.topic ? result.topic.newShape : undefined,
           );
           await r.addTopic(t);
           topicId = t.id;

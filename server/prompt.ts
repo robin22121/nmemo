@@ -1,10 +1,12 @@
 import type Anthropic from '@anthropic-ai/sdk';
+import { SHAPE_IDS } from '../src/core/shapes.ts';
 import { MAX_MEMBERS, MAX_RECENT, MAX_TOPICS, type AnalyzeRequest, type ReorganizeRequest } from '../src/core/organize/types.ts';
 
 export const SYSTEM_PROMPT = `너는 짧은 메모를 정돈하는 도우미다.
 - 메모의 특성(종류·감정·키워드·한 줄 요약)을 파악한다.
 - 주제는 기존 주제 중 가장 맞는 것을 고른다. 가능하면 기존 주제를 재사용하고, 정말 새로운 경우에만 짧은 새 주제(2~8자 정도)를 만든다. 주제가 과도하게 쪼개지지 않게 한다.
 - 새 주제를 만들 때는 newColor도 정한다. 주제 뜻에 어울리는 색(#rrggbb)으로, 부드러운 중간 채도로 고른다. topics의 기존 주제 이름과 color를 보고, 비슷한 주제는 비슷한 색 계열로, 다른 주제는 기존 주제들과 확실히 다른 색 계열로 한다.
+- 새 주제를 만들 때는 newShape도 고른다. 정해진 모양 목록(circle 원, wave 물결, spiral 나선, footprints 발자국, mountain 산, tree 나무, cup 컵, star 별, moon 달, house 집, heart 하트, cloud 구름)에서 주제의 분위기·내용과 가장 어울리는 하나를 고른다. 이름 그대로가 아니어도 좋고, 연상이 닿으면 된다.
 - 주제는 상하 관계 없이 평평하다. 폴더나 트리 구조로 생각하지 않는다.
 - 관련 메모는 실제로 내용·감정·맥락이 이어지는 것만, 최대 5개. 억지로 채우지 않는다. 관련 있는 것이 없으면 빈 목록이다.
 - 사진 메모는 사진 속 장면·글자·분위기를 한두 문장으로 text에 적는다.
@@ -15,6 +17,7 @@ export const REORGANIZE_SYSTEM_PROMPT = `너는 메모 주제를 다시 정리�
 - 확실하지 않으면 옮기지 않는다. 옮길 메모가 없으면 moves는 빈 목록이다.
 - locked가 true인 메모는 사용자가 직접 정한 것이므로 옮기지 않는다.
 - topic.nameLocked가 true면 사용자가 정한 이름이므로 name은 그대로 두고, 그 이름을 중심으로 삼는다.
+- shapeReason에는 이 메모들의 흐름에서 네가 본 의미를 한 줄(40자 이내)로 쓴다. 주제 이름을 되풀이하지 말고, 메모들 사이의 연결이나 창의적인 해석을 담는다. shape는 아직 모양이 없는 주제일 때만 정해진 목록에서 고른다(topic.shape가 있으면 생략).
 - 주제 이름은 짧게(2~8자), 평평한 구조로. 모든 출력은 한국어. 반드시 record_reorganization 도구로만 답한다.`;
 
 export const ANALYZE_TOOL: Anthropic.Tool = {
@@ -43,6 +46,7 @@ export const ANALYZE_TOOL: Anthropic.Tool = {
           newName: { type: 'string' },
           newSummary: { type: 'string' },
           newColor: { type: 'string', description: '새 주제일 때만: 주제 뜻에 어울리는 부드러운 색 #rrggbb. 비슷한 주제는 비슷한 계열, 다른 주제는 확실히 다른 계열' },
+          newShape: { type: 'string', enum: [...SHAPE_IDS], description: '새 주제일 때만: 주제를 닮은 모양 id' },
         },
       },
       related: {
@@ -75,6 +79,8 @@ export const REORGANIZE_TOOL: Anthropic.Tool = {
           name: { type: 'string' },
           summary: { type: 'string' },
           centerKeywords: { type: 'array', items: { type: 'string' }, description: '무리의 중심 키워드 3~5개' },
+          shape: { type: 'string', enum: [...SHAPE_IDS], description: '주제를 닮은 모양 id. 주제에 이미 shape가 있으면 생략' },
+          shapeReason: { type: 'string', description: '메모들의 흐름에서 본 의미 한 줄, 40자 이내. 이름 되풀이 말고 연결·창의적 해석' },
         },
         required: ['name', 'summary', 'centerKeywords'],
       },

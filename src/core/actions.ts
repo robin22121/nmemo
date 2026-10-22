@@ -13,7 +13,7 @@ export interface NewMemoInput {
   topicId?: string;
 }
 
-export function makeTopic(name: string, summary: string, existing: Pick<Topic, 'color'>[], now: number, centerKeywords: string[] = [], color?: string): Topic {
+export function makeTopic(name: string, summary: string, existing: Pick<Topic, 'color'>[], now: number, centerKeywords: string[] = [], color?: string, shape?: string): Topic {
   return {
     id: newId(),
     name,
@@ -24,6 +24,7 @@ export function makeTopic(name: string, summary: string, existing: Pick<Topic, '
     nameLocked: false,
     lastReorgAt: now,
     sinceReorg: 0,
+    ...(shape ? { shape } : {}),
   };
 }
 

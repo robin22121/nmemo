@@ -1,7 +1,9 @@
 import { normalizeTopicColor } from '../palette.ts';
+import { isShapeId } from '../shapes.ts';
 import { MEMO_KINDS, type MemoKind } from '../types.ts';
 import {
   MAX_RELATED,
+  MAX_SHAPE_REASON,
   MAX_SUMMARY,
   type AnalyzeRequest,
   type AnalyzeResult,
@@ -59,7 +61,13 @@ export function validateResult(raw: unknown, req: AnalyzeRequest): AnalyzeResult
     topic = { existingId };
   } else if (newName) {
     const newColor = normalizeTopicColor(raw.topic.newColor);
-    topic = { newName: newName.slice(0, 24), newSummary: str(raw.topic.newSummary).slice(0, 60), ...(newColor ? { newColor } : {}) };
+    const newShape = str(raw.topic.newShape);
+    topic = {
+      newName: newName.slice(0, 24),
+      newSummary: str(raw.topic.newSummary).slice(0, 60),
+      ...(newColor ? { newColor } : {}),
+      ...(isShapeId(newShape) ? { newShape } : {}),
+    };
   } else {
     throw new InvalidResultError('topic을 알 수 없어요');
   }
@@ -118,5 +126,10 @@ export function validateReorganize(raw: unknown, req: ReorganizeRequest): Reorga
       moves.push({ memoId, to, fit, reason: str(item.reason).slice(0, 80) });
     }
   }
-  return { topic: { name, summary, centerKeywords }, moves };
+  const shape = str(raw.topic.shape);
+  const shapeReason = Array.from(str(raw.topic.shapeReason)).slice(0, MAX_SHAPE_REASON).join('');
+  return {
+    topic: { name, summary, centerKeywords, ...(isShapeId(shape) ? { shape } : {}), ...(shapeReason ? { shapeReason } : {}) },
+    moves,
+  };
 }

@@ -161,3 +161,43 @@ describe('흔들림 방지 (적용 단계에서 강제)', () => {
     expect(repo.batches.size).toBe(0);
   });
 });
+
+describe('주제 모양', () => {
+  const res = (shape?: string, shapeReason?: string): ReorganizeResult => ({
+    topic: { name: '마라톤', summary: '', centerKeywords: [], shape, shapeReason }, moves: [],
+  });
+
+  it('모양이 없던 옛 주제는 채우고, 이유는 저장한다. 되돌리면 이전 값(없음)으로', async () => {
+    await seedMarathon();
+    const out = await applyReorganize(repo, 'run', { ...res('footprints', '신발 끈을 묶던 순간들'), topic: { name: '용품', summary: '', centerKeywords: [], shape: 'footprints', shapeReason: '신발 끈을 묶던 순간들' } }, NOW);
+    const t = await repo.getTopic('run');
+    expect(t?.shape).toBe('footprints');
+    expect(t?.shapeReason).toBe('신발 끈을 묶던 순간들');
+    expect(await undoReorganize(repo, out!.batchId!)).toBe(true);
+    const back = await repo.getTopic('run');
+    expect(back?.shape).toBeUndefined();
+    expect(back?.shapeReason).toBeUndefined();
+  });
+
+  it('이미 모양이 있으면 바꾸지 않고 이유만 갱신, 되돌리면 이전 이유 복원', async () => {
+    await seedMarathon();
+    await repo.updateTopic('run', { shape: 'star', shapeReason: '옛 이유' });
+    const out = await applyReorganize(repo, 'run', { topic: { name: '용품', summary: '', centerKeywords: [], shape: 'moon', shapeReason: '새 이유' }, moves: [] }, NOW);
+    expect((await repo.getTopic('run'))?.shape).toBe('star');
+    expect((await repo.getTopic('run'))?.shapeReason).toBe('새 이유');
+    await undoReorganize(repo, out!.batchId!);
+    const back = await repo.getTopic('run');
+    expect(back?.shape).toBe('star');
+    expect(back?.shapeReason).toBe('옛 이유');
+  });
+
+  it('새 주제 분석 결과의 newShape가 Topic.shape로 저장된다', async () => {
+    await repo.addMemo(mkMemo({ id: 'm', status: 'pending', topicId: undefined }));
+    const { applyResult } = await import('../../src/core/organize/apply');
+    await applyResult(repo, 'm', {
+      kind: 'idea', emotion: { label: '담담', color: '#c9c2b0' }, keywords: ['컵'], summary: 's',
+      topic: { newName: '커피', newSummary: '', newShape: 'cup' }, related: [],
+    }, NOW);
+    expect((await repo.listTopics()).find((t) => t.name === '커피')?.shape).toBe('cup');
+  });
+});

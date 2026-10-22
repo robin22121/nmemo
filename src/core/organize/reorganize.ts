@@ -24,7 +24,7 @@ export async function buildReorganizeRequest(repo: Repo, topicId: string): Promi
     .slice(0, MAX_MEMBERS);
   const others = (await repo.listTopics()).filter((t) => t.id !== topicId);
   return {
-    topic: { id: topic.id, name: topic.name, summary: topic.summary, nameLocked: topic.nameLocked },
+    topic: { id: topic.id, name: topic.name, summary: topic.summary, nameLocked: topic.nameLocked, ...(topic.shape ? { shape: topic.shape } : {}) },
     members: members.map((m) => ({
       id: m.id,
       summary: m.summary ?? m.text.slice(0, 40),
@@ -123,6 +123,9 @@ export async function applyReorganize(
       centerKeywords: result.topic.centerKeywords.length ? result.topic.centerKeywords : topic.centerKeywords,
       lastReorgAt: now,
       sinceReorg: 0,
+      // 모양은 주제를 만들 때 한 번 정해진다: 아직 없는 옛 주제만 채우고, 이유는 매번 갱신
+      ...(!topic.shape && result.topic.shape ? { shape: result.topic.shape } : {}),
+      ...(result.topic.shapeReason ? { shapeReason: result.topic.shapeReason } : {}),
     });
 
     let outBatch: string | null = null;
@@ -136,6 +139,8 @@ export async function applyReorganize(
         prevCenterKeywords: topic.centerKeywords,
         newName,
         moveCount: moves.length,
+        prevShape: topic.shape,
+        prevShapeReason: topic.shapeReason,
       };
       await r.putBatch(batch);
       if (moves.length) await r.addMoves(moves);
@@ -164,6 +169,8 @@ export async function undoReorganize(repo: Repo, batchId: string): Promise<boole
         summary: batch.prevSummary,
         centerKeywords: batch.prevCenterKeywords,
         sinceReorg: 0,
+        shape: batch.prevShape,
+        shapeReason: batch.prevShapeReason,
       });
     }
     for (const mv of moves) {

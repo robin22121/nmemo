@@ -168,3 +168,17 @@ describe('두 파일 합치기(§4-3)', () => {
     expect((await ba.memos.get('shared'))?.topicId).toBe('tb-only');
   });
 });
+
+describe('주제 모양 필드', () => {
+  it('내보내기·가져오기가 shape·shapeReason을 그대로 옮기고, 필드가 없는 옛 주제도 깨지지 않는다', async () => {
+    const text = fileText({
+      topics: [mkTopic({ id: 'sh', name: '커피', shape: 'cup', shapeReason: '한 모금씩 쌓인 아침' }), mkTopic({ id: 'old', name: '옛 주제' })],
+      memos: [mkMemo({ id: 's1', topicId: 'sh' })], links: [], batches: [], moves: [],
+    });
+    const db = freshDb();
+    await importBackup(text, db);
+    const sh = await db.topics.get('sh');
+    expect([sh?.shape, sh?.shapeReason]).toEqual(['cup', '한 모금씩 쌓인 아침']);
+    expect((await db.topics.get('old'))?.shape).toBeUndefined();
+  });
+});

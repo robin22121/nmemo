@@ -48,6 +48,10 @@ export interface Topic {
   lastReorgAt: number;
   /** 마지막 재구성 뒤 들어온 메모 수 */
   sinceReorg: number;
+  /** 주제 모양 id(shapes.ts SHAPE_IDS). 주제를 만들 때 한 번 정해지고 그대로 유지. 없으면 원(색인 아님) */
+  shape?: string;
+  /** AI가 메모들의 흐름에서 본 의미 한 줄(40자 이내, 색인 아님) */
+  shapeReason?: string;
 }
 
 export interface Link {
@@ -79,6 +83,9 @@ export interface MoveBatch {
   prevCenterKeywords: string[];
   newName: string;
   moveCount: number;
+  /** 되돌리기용: 재구성 전 모양·이유(없었으면 undefined) */
+  prevShape?: string;
+  prevShapeReason?: string;
   undone?: boolean;
 }
 

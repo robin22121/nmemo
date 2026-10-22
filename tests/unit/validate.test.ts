@@ -89,6 +89,22 @@ describe('validateReorganize', () => {
   });
 });
 
+describe('모양 검증', () => {
+  it('reorganize: 목록 밖 shape는 버리고 shapeReason은 40자로 줄인다', () => {
+    const rr: ReorganizeRequest = { topic: { id: 't', name: 'T', summary: '', nameLocked: false }, members: [], otherTopics: [] };
+    const ok = validateReorganize({ topic: { name: 'x', shape: 'star', shapeReason: '가'.repeat(60) }, moves: [] }, rr);
+    expect(ok.topic.shape).toBe('star');
+    expect(Array.from(ok.topic.shapeReason ?? '')).toHaveLength(40);
+    const bad = validateReorganize({ topic: { name: 'x', shape: 'dragon', shapeReason: '  ' }, moves: [] }, rr);
+    expect(bad.topic.shape).toBeUndefined();
+    expect(bad.topic.shapeReason).toBeUndefined();
+  });
+  it('analyze: newShape가 목록 밖이면 버린다', () => {
+    expect(validateResult({ ...good, topic: { newName: '새', newSummary: '', newShape: 'cup' } }, req).topic).toEqual({ newName: '새', newSummary: '', newShape: 'cup' });
+    expect(validateResult({ ...good, topic: { newName: '새', newSummary: '', newShape: 'dragon' } }, req).topic).toEqual({ newName: '새', newSummary: '' });
+  });
+});
+
 describe('newColor 검증', () => {
   const withColor = (c: unknown) => validateResult({ ...good, topic: { newName: '새', newSummary: '', newColor: c } }, req).topic;
   it('올바른 hex는 통과(팔레트 색은 그대로)', () => {
