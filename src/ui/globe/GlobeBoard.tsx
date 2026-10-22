@@ -126,7 +126,7 @@ export function GlobeBoard({
   /** 들어 올린 카드를 다른 주제 이름에 놓음(평면 보드의 끌어 옮기기와 같은 처리 → 직접 정한 것으로 고정) */
   onMoveToTopic: (memoId: string, topicId: string) => void;
   notify: (m: string) => void;
-  /** 메모 상세(패널)가 열려 있는 동안 자전을 멈춘다 */
+  /** 메모 포커스가 열려 있음(+ 메뉴를 숨긴다). 자전은 멈추지 않는다(F5) */
   panelOpen?: boolean;
 }) {
   const { topics, memos, links, layout, ready } = useBoardData();
@@ -296,8 +296,8 @@ export function GlobeBoard({
   }, [clusters]);
 
   useEffect(() => {
-    engine.current?.setMode({ write: writing, reduced, paused: panelOpen || !!listTopic || !!lift || !!moving });
-  }, [writing, reduced, panelOpen, listTopic, lift, moving]);
+    engine.current?.setMode({ write: writing, reduced, paused: !!listTopic || !!lift || !!moving });
+  }, [writing, reduced, listTopic, lift, moving]);
 
   // 백그라운드에 5분 넘게 있다 돌아오면 다시 쓰기 모드
   useEffect(() => {

@@ -15,37 +15,64 @@
 .chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 12.5px; background: var(--paper-2); }
 .chip.kind { background: #f0e7c9; }
 
-/* ── 메모장(메모 상세, E1·E8): 지구본 카드·쓰기 칸(D21)과 같은 재료 — 주제 색(--c)의 은은한 번짐, 크게 둥근 모서리, 종이빛 ── */
+/* ── 메모 포커스(F1~F9, E8): 정중앙 읽기 카드 + 주제 모양 윤곽 위의 메모 점. 지구본 카드·쓰기 칸(D21)과 같은 재료 ── */
 html.mp-open, html.mp-open body { overflow: hidden; height: 100%; overscroll-behavior: none; }
-.mp-backdrop { position: fixed; inset: 0; z-index: 49; }
-.mp-backdrop[data-sheet='cover'] { background: rgba(246, 241, 231, 0.55); }
-.mp-backdrop[data-sheet='glass'] { background: rgba(246, 241, 231, 0.16); }
-.mp-ghost, .mp-panel {
-  position: fixed; z-index: 50; border-radius: 32px; color: var(--ink);
-  box-shadow: 0 0 36px 10px color-mix(in srgb, var(--c) 18%, transparent), 0 14px 44px rgba(120, 96, 60, 0.14);
+/* 뒤 지구본은 종이빛 덮개로 살짝 가라앉고 배경 주제는 계속 돈다(F5) */
+.mp-backdrop { position: fixed; inset: 0; z-index: 49; background: rgba(246, 241, 231, 0.62); pointer-events: none; }
+.mf { position: fixed; inset: 0; z-index: 50; touch-action: none; user-select: none; -webkit-user-select: none; }
+.mp-ghost { position: fixed; z-index: 51; pointer-events: none; }
+.mf-card-skin {
+  border-radius: 28px; color: var(--ink);
+  background: radial-gradient(ellipse 120% 70% at 50% 0%, color-mix(in srgb, var(--c) 16%, #fffdf8) 0%, color-mix(in srgb, var(--c) 7%, #fffdf8) 55%, color-mix(in srgb, var(--c) 4%, #fffdf8) 100%);
+  box-shadow: 0 0 40px 12px color-mix(in srgb, var(--c) 18%, transparent), 0 16px 34px rgba(120, 96, 60, 0.13);
 }
-.mp-ghost { pointer-events: none; }
-/* A 덮기: 불투명 종이 + 위쪽에서 주제 색이 은은하게 번진다 */
-.mp-ghost[data-sheet='cover'], .mp-panel[data-sheet='cover'] {
-  background: radial-gradient(ellipse 120% 70% at 50% 0%, color-mix(in srgb, var(--c) 18%, #fffdf8) 0%, color-mix(in srgb, var(--c) 8%, #fffdf8) 55%, color-mix(in srgb, var(--c) 4%, #fffdf8) 100%);
+.mf-stack { position: absolute; left: 34px; right: 34px; top: 50%; }
+.mf-card {
+  position: relative; display: block; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  padding: 16px 18px 16px; touch-action: pan-y; user-select: text; -webkit-user-select: text; outline: none;
 }
-/* B 반투명: 주제 색 유리. 껍데기는 반투명 색만, blur는 다 열린 패널에만(크기 애니메이션 중 다시 그리기 방지) */
-.mp-ghost[data-sheet='glass'], .mp-panel[data-sheet='glass'] {
-  background: radial-gradient(ellipse 120% 70% at 50% 0%, color-mix(in srgb, var(--c) 20%, rgba(255, 253, 248, 0.78)) 0%, color-mix(in srgb, var(--c) 10%, rgba(255, 253, 248, 0.74)) 55%, color-mix(in srgb, var(--c) 6%, rgba(255, 253, 248, 0.72)) 100%);
+.mf-card:focus, .mf-card:focus-visible { outline: none; }
+.mf-card :focus-visible { outline-color: color-mix(in srgb, var(--c) 70%, var(--ink)); }
+.mf-head { display: flex; align-items: center; gap: 8px; min-height: 22px; }
+.mf-date { font-size: 12px; color: var(--ink-soft); }
+.mf-head .mp-done { margin-left: auto; }
+.mf-text-wrap { margin: 6px 0 12px; padding: 4px 30px 6px 2px; background: none; }
+.mf .mf-text { font-size: 22px; line-height: 1.55; font-weight: 500; }
+.mf-text-wrap .mp-pen { right: 0; top: 8px; }
+.mf .mf-edit { font-size: 20px; margin-top: 8px; }
+.mf-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mf-more {
+  margin-left: auto; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 18px; line-height: 1; color: var(--ink-soft);
+  background: color-mix(in srgb, var(--c) 10%, rgba(255, 252, 245, 0.85));
 }
-.mp-panel[data-sheet='glass'] { -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2); }
-.mp-panel {
-  top: calc(env(safe-area-inset-top, 0px) + 12px); left: 12px; right: 12px; overflow: hidden; display: flex; flex-direction: column;
-  will-change: transform;
+.mf-more.on { background: color-mix(in srgb, var(--c) 30%, #fffdf8); }
+.mf-pick { padding: 10px 0 0; }
+.mf-conn { display: block; margin-top: 12px; padding: 4px 0; font-size: 13px; color: var(--ink-soft); text-align: left; }
+.mf-conn b { font-weight: 600; color: color-mix(in srgb, var(--lc) 70%, var(--ink)); }
+.mf-drawer { padding-top: 2px; }
+/* 모양 이유(F8): 카드 아래 작은 회색 한두 줄 */
+.mf-reason {
+  position: absolute; left: 8px; right: 8px; top: 100%; margin: 10px 0 0; font-size: 12px; line-height: 1.4; color: var(--ink-soft); text-align: center;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; pointer-events: none;
 }
-.mp-panel :focus-visible { outline-color: color-mix(in srgb, var(--c) 70%, var(--ink)); }
-.mp-inner { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.mp-drag { flex: none; touch-action: none; }
-.mp-grabber { height: 22px; }
-.mp-grabber::before { background: color-mix(in srgb, var(--c) 40%, rgba(58, 50, 38, 0.3)); }
-.mp-head { display: flex; align-items: center; gap: 6px; padding: 0 12px 8px 16px; }
-.mp-date { margin-left: auto; white-space: nowrap; }
-.mp-close { flex: none; width: 36px; height: 36px; color: var(--ink-soft); background: color-mix(in srgb, var(--c) 10%, rgba(255, 252, 245, 0.7)); }
+/* 윤곽 먼지(F2): 옅은 작은 점, SVG 한 요소 */
+.mf-dust { position: absolute; left: 0; top: 0; pointer-events: none; }
+.mf-dust path { fill: color-mix(in srgb, var(--c) 55%, var(--ink-soft)); opacity: 0.4; }
+/* 메모 점(F2·F9): 지름 12px, 누르는 영역 36px. 다른 주제와 이어진 메모는 그 주제 색 */
+.mf-dot { position: absolute; width: 36px; height: 36px; margin: -18px 0 0 -18px; display: grid; place-items: center; pointer-events: none; }
+.mf-dot i {
+  width: 12px; height: 12px; border-radius: 50%; background: color-mix(in srgb, var(--c) 70%, #fffdf8);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--c) 45%, transparent), 0 0 12px 4px color-mix(in srgb, var(--c) 35%, transparent);
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.45s;
+}
+.mf-dot.link i { background: color-mix(in srgb, var(--lc) 75%, #fffdf8); box-shadow: 0 0 0 2px color-mix(in srgb, var(--lc) 60%, transparent), 0 0 12px 4px color-mix(in srgb, var(--lc) 35%, transparent); }
+.mf-dot.on i { transform: scale(1.8); box-shadow: 0 0 0 2px color-mix(in srgb, var(--c) 80%, transparent), 0 0 22px 8px color-mix(in srgb, var(--c) 45%, transparent); }
+/* 위치 막대(F3) */
+.mf-bar {
+  position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 14px); width: 120px; height: 4px; margin-left: -60px; border-radius: 4px;
+  background: color-mix(in srgb, var(--c) 18%, rgba(58, 50, 38, 0.12)); overflow: hidden; pointer-events: none;
+}
+.mf-bar i { position: absolute; top: 0; bottom: 0; min-width: 6px; border-radius: 4px; background: color-mix(in srgb, var(--c) 75%, var(--ink-soft)); transition: left 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
 .mp-chip, .mp-opt, .mp-pill, .mp-done {
   display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; font-size: 13px; white-space: nowrap;
   color: color-mix(in srgb, var(--c) 40%, var(--ink));
@@ -58,7 +85,6 @@ html.mp-open, html.mp-open body { overflow: hidden; height: 100%; overscroll-beh
 .mp-opt.emo.on { background: color-mix(in srgb, var(--emo) 30%, #fffdf8); }
 .mp-done { font-weight: 700; color: #fffdf7; background: color-mix(in srgb, var(--c) 78%, var(--ink)); }
 .mp-pick { flex: none; display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 16px 10px; }
-.mp-scroll { flex: 1; min-height: 0; padding: 0 16px 22px; }
 .mp-photo { width: 100%; max-height: 220px; object-fit: cover; border-radius: 24px; margin-bottom: 10px; box-shadow: 0 0 12px 3px color-mix(in srgb, var(--c) 14%, transparent); }
 /* 본문: 연필 표시가 있는 편집 영역. 누르면 그 자리에서 고친다 */
 .mp-text-wrap {

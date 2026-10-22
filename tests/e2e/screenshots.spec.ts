@@ -28,7 +28,7 @@ test('스크린샷: 집중(정면 주제 하나가 펼쳐진 보드)과 하늘(�
   await page.screenshot({ path: `${OUT}/02-board-overview.png` });
 });
 
-test('스크린샷: 메모장(메모 상세)', async ({ page }) => {
+test('스크린샷: 메모 포커스', async ({ page }) => {
   await openDemo(page);
   const board = page.getByTestId('board');
   const front = (await board.getAttribute('data-front'))!;

@@ -63,7 +63,7 @@ test('전혀 다른 글은 새 주제 무리를 만든다', async ({ page }) => 
   await expect(info(page)).toHaveAttribute('data-clusters', '7');
 });
 
-test('카드를 누르면 메모장이 열려 관련 메모가 보이고 주제를 바꾸고 지울 수 있다', async ({ page }) => {
+test('카드를 누르면 메모 포커스가 열려 지우면 다음 메모로, 주제를 바꾸면 닫힌다', async ({ page }) => {
   await openDemo(page);
   const board = page.getByTestId('board');
   await expect(board).toHaveAttribute('data-settled', '1');
@@ -75,17 +75,18 @@ test('카드를 누르면 메모장이 열려 관련 메모가 보이고 주제�
   await expect(sheet).toBeVisible();
   await expect(page.getByTestId('sheet-text')).toBeVisible();
 
-  await page.getByTestId('change-topic').click();
-  const other = page.getByTestId('topic-pick').locator('button:not(.current)').first();
-  const name = (await other.textContent())!.trim();
-  await other.click();
-  await expect(page.getByTestId('toast-text')).toHaveText('주제를 옮겼어요');
-  await expect(sheet.locator('.topic-chip.current')).toHaveText(name);
-
-  // 삭제
+  // 삭제 → 다음 메모
+  await page.getByTestId('focus-more').click();
   await page.getByTestId('delete-memo').click();
   await page.getByTestId('confirm-delete').click();
   await expect(info(page)).toHaveAttribute('data-cards', '39');
+  await expect(sheet).not.toHaveAttribute('data-focus-memo', memoId);
+
+  await page.getByTestId('focus-more').click();
+  await page.getByTestId('change-topic').click();
+  await page.getByTestId('topic-pick').locator('button:not(.current)').first().click();
+  await expect(page.getByTestId('toast-text')).toHaveText('주제를 옮겼어요');
+  await expect(page.getByTestId('memo-focus')).toHaveCount(0);
 });
 
 test('감소 모션: 비행 연출 없이도 정돈되어 붙는다', async ({ page }) => {

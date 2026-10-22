@@ -8,7 +8,7 @@ import { getDb } from './db/schema';
 import { motionBus } from './motion/bus';
 import { getQueue } from './organize/runtime';
 import { GlobeBoard } from './ui/globe/GlobeBoard';
-import { MemoSheet } from './ui/MemoSheet';
+import { MemoFocus } from './ui/MemoFocus';
 import { Toast, type ToastState } from './ui/Toast';
 import './ui/input.css';
 import './ui/sheet.css';
@@ -91,7 +91,7 @@ export function App() {
           notify={notify}
           panelOpen={!!selected}
         />
-        <MemoSheet memoId={selected} onClose={() => setSelected(null)} onSelect={setSelected} notify={notify} />
+        <MemoFocus memoId={selected} onClose={() => setSelected(null)} onSelect={setSelected} notify={notify} />
         <Toast toast={toast} />
       </div>
     </MotionConfig>

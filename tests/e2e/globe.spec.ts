@@ -260,6 +260,8 @@ async function openSheetOf(page: Page, memoId: string, topicId: string) {
   await expect(page.getByTestId('memo-sheet')).toBeVisible();
   const text = await page.evaluate(async (id) => (await (window as unknown as { __kk: KkDb }).__kk.db.memos.get(id)).text as string, memoId);
   await expect(page.getByTestId('sheet-text')).toHaveText(text);
+  // 연결·이동 기록은 카드 아래 연결 줄을 눌러 펼친다(F6)
+  await page.getByTestId('focus-conn').click();
 }
 
 test('지구본: 고정 메모가 다른 주제 메모와 이어지면 카드에 그 주제 색 점, 상세에 연결된 주제가 보이고 누르면 그 주제로 돈다(D25)', async ({ page }) => {
@@ -472,7 +474,7 @@ test('지구본: 하늘 상태에서는 손대지 않아도 천천히 자전하�
   await page.mouse.down();
   await page.mouse.move(150, 400, { steps: 5 });
   await page.mouse.up();
-  await page.waitForTimeout(1500);
+  await expect(board).toHaveAttribute('data-settled', '1'); // D34 감속은 끝이 길어 시간 대신 멈춤을 기다린다
   const c = await phiOf(board);
   await page.waitForTimeout(1500);
   expect(await phiOf(board)).toBe(c);
@@ -495,4 +497,60 @@ test('지구본: 집중 상태에서는 정면 주제와 펼친 카드는 제자
   expect(t1.some(([id, tr]) => id !== front && tr !== at(t0, id))).toBe(true);
   await expect(board).toHaveAttribute('data-front', front);
   await expect(board).toHaveAttribute('data-settled', '1');
+});
+
+test('지구본: 밀고 손을 떼면 그 속도를 이어받아 줄곧 느려지며 정면 주제가 정가운데에 멈춘다(D34)', async ({ page }) => {
+  const board = await openBoard(page, 'sky');
+  // 프레임마다 그려진 φ와 그 프레임 시각, 손 뗀 시각을 모은다
+  await page.evaluate(() => {
+    const w = window as unknown as { tr: [number, number][]; mv: [number, number][]; up: number };
+    const b = document.querySelector<HTMLElement>('[data-testid="board"]')!;
+    w.tr = [];
+    w.mv = [];
+    b.addEventListener('pointermove', (e) => w.mv.push([performance.now(), e.clientX]), { capture: true });
+    new MutationObserver(() => w.tr.push([document.timeline.currentTime as number, Number(b.dataset.phi)])).observe(b, { attributes: true, attributeFilter: ['data-phi'] });
+    b.addEventListener('pointerup', () => (w.up = document.timeline.currentTime as number), { once: true, capture: true });
+  });
+  // 손가락처럼 고르게 민다(약 30ms마다 25px — 다음 주제까지 관성으로 갈 만큼 빠르게)
+  await page.mouse.move(320, 400);
+  await page.mouse.down();
+  for (let i = 1; i <= 8; i++) {
+    if (i > 1) await page.waitForTimeout(16);
+    await page.mouse.move(320 - i * 25, 400);
+  }
+  await page.mouse.up();
+  await expect(board).toHaveAttribute('data-settled', '1');
+  expect(Math.abs(Number(await board.getAttribute('data-delta')))).toBeLessThan(0.5);
+  const { tr, mv, up } = await page.evaluate(() => {
+    const w = window as unknown as { tr: [number, number][]; mv: [number, number][]; up: number };
+    return { tr: w.tr, mv: w.mv, up: w.up };
+  });
+  // 프레임 시각이 고르지 않아(헤드리스) φ를 시각으로 보간해 50ms 구간 평균 속도(°/s)로 본다
+  const phiAt = (t: number) => {
+    const j = tr.findIndex((p) => p[0] >= t);
+    if (j <= 0) return tr[Math.max(0, j)]![1];
+    const [t0, p0] = tr[j - 1]!, [t1, p1] = tr[j]!;
+    return t1 === t0 ? p1 : p0 + ((p1 - p0) * (t - t0)) / (t1 - t0);
+  };
+  // 손 뗄 때 손가락 속도: 마지막 100ms 이벤트의 x 기울기(최소제곱) × 0.28°/px(MOTION.degPerPx, 하늘 상태 배율 1)
+  const w = mv.filter((p) => p[0] > mv[mv.length - 1]![0] - 100);
+  const mt = w.reduce((a, p) => a + p[0], 0) / w.length, mx = w.reduce((a, p) => a + p[1], 0) / w.length;
+  const slope = w.reduce((a, p) => a + (p[0] - mt) * (p[1] - mx), 0) / w.reduce((a, p) => a + (p[0] - mt) ** 2, 0);
+  const vRel = -slope * 1000 * 0.28;
+  expect(vRel).toBeGreaterThan(60);
+  const end = tr[tr.length - 1]![0];
+  // 헤드리스 프레임·입력 간격 흔들림을 덜려고 100ms 구간으로 본다(곡선 자체의 엄밀한 검사는 단위 테스트 glide.test.ts)
+  const bins: number[] = [];
+  for (let t = up; t + 100 <= end; t += 100) bins.push((phiAt(t + 100) - phiAt(t)) / 0.1);
+  // 헤드리스가 프레임을 50ms 넘게 거른 구간은 엔진이 dt를 0.05초로 자르므로 그 구간 속도가 낮게 잡힌다 → 비교에서 뺀다
+  const stalled = bins.map((_, i) => tr.some((p, j) => j > 0 && p[0] - tr[j - 1]![0] > 50 && p[0] > up + i * 100 && tr[j - 1]![0] < up + (i + 1) * 100));
+  // 손 뗀 직후 속도가 0 근처로 떨어지지도, 튀어 오르지도 않는다
+  expect(bins[0]!).toBeGreaterThan(vRel * 0.5);
+  expect(bins[0]!).toBeLessThan(vRel * 1.6);
+  // 이후 줄곧 느려진다 — 반대로 돌거나 다시 빨라지지 않고 0으로
+  for (let i = 1; i < bins.length; i++) {
+    expect(bins[i]!).toBeGreaterThan(-1);
+    if (!stalled[i] && !stalled[i - 1]) expect(bins[i]!).toBeLessThan(bins[i - 1]! + vRel * 0.15);
+  }
+  expect(Math.abs(bins[bins.length - 1]!)).toBeLessThan(3);
 });

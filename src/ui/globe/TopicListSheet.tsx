@@ -5,7 +5,7 @@ import { spring } from '../../motion/presets';
 import { useObjectUrl } from '../hooks';
 import { CloseIcon } from '../icons';
 import { cardText } from '../MemoCard';
-import { fmtDate, KIND_LABEL } from '../MemoSheet';
+import { fmtDate, KIND_LABEL } from '../MemoFocus';
 
 function Row({ memo, onPick }: { memo: Memo; onPick: (id: string) => void }) {
   const url = useObjectUrl(memo.input === 'photo' ? memo.photo : undefined);
