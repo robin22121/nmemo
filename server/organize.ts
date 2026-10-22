@@ -5,10 +5,10 @@ import { InvalidResultError, validateReorganize, validateResult } from '../src/c
 import {
   ANALYZE_TOOL,
   REORGANIZE_SYSTEM_PROMPT,
-  REORGANIZE_TOOL,
   SYSTEM_PROMPT,
   buildAnalyzeContent,
   buildReorganizeContent,
+  reorganizeTool,
 } from './prompt.ts';
 
 export const MODEL = 'claude-haiku-5-5';
@@ -52,8 +52,11 @@ export async function organize(client: MessagesClient, req: AnalyzeRequest): Pro
 
 export async function reorganize(client: MessagesClient, req: ReorganizeRequest): Promise<ReorganizeResult> {
   const safe: ReorganizeRequest = { ...req, members: req.members.slice(0, MAX_MEMBERS) };
-  const raw = await callTool(client, REORGANIZE_SYSTEM_PROMPT, REORGANIZE_TOOL, buildReorganizeContent(safe));
-  return validateReorganize(raw, safe);
+  const raw = await callTool(client, REORGANIZE_SYSTEM_PROMPT, reorganizeTool(!safe.topic.shape), buildReorganizeContent(safe));
+  const out = validateReorganize(raw, safe);
+  // 모양 없는 주제는 반드시 모양을 갖는다(F7): 모델이 빠뜨리거나 목록 밖이면 원
+  if (!safe.topic.shape && !out.topic.shape) out.topic.shape = 'circle';
+  return out;
 }
 
 // ---- HTTP 핸들러(프레임워크 무관) ----

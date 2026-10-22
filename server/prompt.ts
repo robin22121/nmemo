@@ -17,7 +17,8 @@ export const REORGANIZE_SYSTEM_PROMPT = `너는 메모 주제를 다시 정리�
 - 확실하지 않으면 옮기지 않는다. 옮길 메모가 없으면 moves는 빈 목록이다.
 - locked가 true인 메모는 사용자가 직접 정한 것이므로 옮기지 않는다.
 - topic.nameLocked가 true면 사용자가 정한 이름이므로 name은 그대로 두고, 그 이름을 중심으로 삼는다.
-- shapeReason에는 이 메모들의 흐름에서 네가 본 의미를 한 줄(40자 이내)로 쓴다. 주제 이름을 되풀이하지 말고, 메모들 사이의 연결이나 창의적인 해석을 담는다. shape는 아직 모양이 없는 주제일 때만 정해진 목록에서 고른다(topic.shape가 있으면 생략).
+- shapeReason에는 이 메모들의 흐름에서 네가 본 의미를 30자 이내의 완결된 한 구절로 쓴다(중간에 끊기지 않게). 주제 이름을 되풀이하지 말고, 메모들 사이의 연결이나 창의적인 해석을 담는다.
+- topic.shape가 없으면 shape를 반드시 정해진 목록(circle 원, wave 물결, spiral 나선, footprints 발자국, mountain 산, tree 나무, cup 컵, star 별, moon 달, house 집, heart 하트, cloud 구름)에서 하나 고른다. topic.shape가 있으면 shape는 생략한다.
 - 주제 이름은 짧게(2~8자), 평평한 구조로. 모든 출력은 한국어. 반드시 record_reorganization 도구로만 답한다.`;
 
 export const ANALYZE_TOOL: Anthropic.Tool = {
@@ -79,8 +80,8 @@ export const REORGANIZE_TOOL: Anthropic.Tool = {
           name: { type: 'string' },
           summary: { type: 'string' },
           centerKeywords: { type: 'array', items: { type: 'string' }, description: '무리의 중심 키워드 3~5개' },
-          shape: { type: 'string', enum: [...SHAPE_IDS], description: '주제를 닮은 모양 id. 주제에 이미 shape가 있으면 생략' },
-          shapeReason: { type: 'string', description: '메모들의 흐름에서 본 의미 한 줄, 40자 이내. 이름 되풀이 말고 연결·창의적 해석' },
+          shape: { type: 'string', enum: [...SHAPE_IDS], description: '주제를 닮은 모양 id. 요청의 topic.shape가 없으면 반드시 고르고, 있으면 생략' },
+          shapeReason: { type: 'string', description: '메모들의 흐름에서 본 의미, 30자 이내의 완결된 한 구절. 이름 되풀이 말고 연결·창의적 해석' },
         },
         required: ['name', 'summary', 'centerKeywords'],
       },
@@ -108,6 +109,17 @@ export const REORGANIZE_TOOL: Anthropic.Tool = {
     required: ['topic', 'moves'],
   },
 };
+
+/** 요청 주제에 모양이 없으면 shape를 필수로 한 재정리 도구(F7: 모양 없는 주제는 반드시 고른다) */
+export function reorganizeTool(needShape: boolean): Anthropic.Tool {
+  if (!needShape) return REORGANIZE_TOOL;
+  const schema = REORGANIZE_TOOL.input_schema as { properties: { topic: { required: string[] } } };
+  const topic = schema.properties.topic;
+  return {
+    ...REORGANIZE_TOOL,
+    input_schema: { ...REORGANIZE_TOOL.input_schema, properties: { ...schema.properties, topic: { ...topic, required: [...topic.required, 'shape'] } } },
+  };
+}
 
 const IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'] as const;
 type ImageMime = (typeof IMAGE_MIMES)[number];

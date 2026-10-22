@@ -72,6 +72,20 @@ describe('서버 organize', () => {
     expect(out.moves).toHaveLength(1);
     expect((create.mock.calls[0]![0] as Anthropic.MessageCreateParamsNonStreaming).tool_choice).toEqual({ type: 'tool', name: 'record_reorganization' });
   });
+
+  it('재구성: 모양 없는 주제는 shape가 필수이고, 모델이 빠뜨리면 원(F7). 모양이 있으면 필수가 아니다', async () => {
+    const rr: ReorganizeRequest = { topic: { id: 't', name: '산책', summary: '', nameLocked: false }, members: [], otherTopics: [] };
+    const reqOf = (c: ReturnType<typeof mock>['create']) => ((c.mock.calls[0]![0] as Anthropic.MessageCreateParamsNonStreaming).tools![0] as Anthropic.Tool).input_schema as unknown as { properties: { topic: { required: string[] } } };
+    const a = mock(toolUse('record_reorganization', { topic: { name: '산책', summary: 's', centerKeywords: [] }, moves: [] }));
+    expect((await reorganize(a.client, rr)).topic.shape).toBe('circle');
+    expect(reqOf(a.create).properties.topic.required).toContain('shape');
+    const b = mock(toolUse('record_reorganization', { topic: { name: '산책', summary: 's', centerKeywords: [], shape: 'footprints' }, moves: [] }));
+    expect((await reorganize(b.client, rr)).topic.shape).toBe('footprints');
+    const c = mock(toolUse('record_reorganization', { topic: { name: '산책', summary: 's', centerKeywords: [] }, moves: [] }));
+    const withShape = await reorganize(c.client, { ...rr, topic: { ...rr.topic, shape: 'cup' } });
+    expect(withShape.topic.shape).toBeUndefined();
+    expect(reqOf(c.create).properties.topic.required).not.toContain('shape');
+  });
 });
 
 describe('서버 HTTP 핸들러', () => {

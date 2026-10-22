@@ -28,6 +28,23 @@ function str(v: unknown): string {
   return typeof v === 'string' ? v.trim() : '';
 }
 
+/** 경계(공백·문장부호)에서 끊을 수 있는 글자 */
+const BREAK = /[\s,.!?·…~、，。;:]/;
+
+/**
+ * max자(코드 포인트)를 넘으면 낱말 중간이 아니라 max자 안의 마지막 공백·문장부호 앞에서 자른다.
+ * 앞쪽 절반 안에 경계가 없으면 max자에서 그냥 자른다.
+ */
+export function trimPhrase(s: string, max: number): string {
+  const cs = Array.from(s);
+  if (cs.length <= max) return s;
+  // max번째 글자 바로 뒤가 경계면 max자 그대로가 완결
+  let cut = BREAK.test(cs[max]!) ? max : -1;
+  for (let i = max - 1; cut < 0 && i >= Math.ceil(max / 2); i--) if (BREAK.test(cs[i]!)) cut = i;
+  if (cut < 0) return cs.slice(0, max).join('');
+  return cs.slice(0, cut).join('').replace(/[\s,·、，;:]+$/u, '');
+}
+
 /**
  * 분석기가 돌려준 값(AI 응답 포함)을 검증·정리한다.
  * - 잘못된 항목(없는 id, 범위 밖 strength 등)은 버린다.
@@ -127,7 +144,7 @@ export function validateReorganize(raw: unknown, req: ReorganizeRequest): Reorga
     }
   }
   const shape = str(raw.topic.shape);
-  const shapeReason = Array.from(str(raw.topic.shapeReason)).slice(0, MAX_SHAPE_REASON).join('');
+  const shapeReason = trimPhrase(str(raw.topic.shapeReason), MAX_SHAPE_REASON);
   return {
     topic: { name, summary, centerKeywords, ...(isShapeId(shape) ? { shape } : {}), ...(shapeReason ? { shapeReason } : {}) },
     moves,

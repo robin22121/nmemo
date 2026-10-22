@@ -1,4 +1,4 @@
-/** 메모 포커스 화면(F1~F9)의 순수 계산: 메모 점 자리, 이동 순서, 조사. DOM 없음. */
+/** 메모 포커스 화면(F1~F10)의 순수 계산: 메모 점 자리, 이동 순서, 조사. DOM 없음. */
 import { getShape, sampleShape, type Box, type Pt, type Rect } from '../shapes';
 
 /** F9: 점 지름·누르는 영역·점끼리 최소 중심 거리·점으로 보여 줄 최대 메모 수·먼지 상한 */
@@ -13,6 +13,21 @@ export const FOCUS = {
   /** F3: 가로로 이만큼 밀면 앞뒤 이동(px) */
   swipe: 40,
 } as const;
+
+/** F10: 넘길 때 모양 드러내기. 다 드러났을 때 카드 배율·불투명도, 끌기 이만큼(px)에 다 드러남, 드러나는 시간(s), 다음 점으로 빛이 옮겨 가는 동안 머무는 시간(ms) */
+export const REVEAL = {
+  scale: 0.45,
+  opacity: 0.15,
+  dragPx: 60,
+  inS: 0.2,
+  holdMs: 350,
+} as const;
+
+/** 상자 안에서 가장 큰 정사각형(가운데). 모양을 비율 그대로 그릴 자리(F10) */
+export function fitSquare(box: Box): Box {
+  const side = Math.max(0, Math.min(box.w, box.h));
+  return { x: box.x + (box.w - side) / 2, y: box.y + (box.h - side) / 2, w: side, h: side };
+}
 
 /**
  * 윤곽을 따라 시간순으로 메모 점 자리를 고른다(avoid 밖). 점끼리 중심 거리 ≥ minGap.

@@ -61,11 +61,15 @@ const cardShown = (page: Page, memoId: string) =>
 
 /** 빈 곳(카드·점에서 먼 오른쪽 아래 구석 근처) 탭 */
 async function tapEmpty(page: Page) {
+  await rested(page);
   const dots = await page.getByTestId('focus-dot').evaluateAll((els) => els.map((e) => e.getBoundingClientRect()).map((b) => [b.left + b.width / 2, b.top + b.height / 2]));
   const cands: [number, number][] = [[W / 2, H - 60], [30, 40], [W - 30, 40], [30, H - 60], [W - 30, H - 60], [W / 2, 30]];
   const p = cands.find(([x, y]) => dots.every(([dx, dy]) => Math.hypot(dx! - x, dy! - y) > 30))!;
   await page.mouse.click(p[0], p[1]);
 }
+
+/** 넘기기 드러내기(F10)가 끝나 큰 카드로 돌아올 때까지 */
+const rested = (page: Page) => expect(page.getByTestId('memo-focus')).not.toHaveAttribute('data-revealed', '1');
 
 async function swipe(page: Page, dx: number, y = H - 70) {
   const x0 = W / 2 - dx / 2;
@@ -115,7 +119,7 @@ test('포커스: 같은 주제 메모 = 점(카드 밖·화면 안·간격 ≥ 2
   const dots = page.getByTestId('focus-dot');
   await expect(dots).toHaveCount(Math.min(24, order.length));
   await expect(page.getByTestId('focus-dust')).toHaveAttribute('data-shape', 'heart');
-  expect(await page.locator('.mf-dust path').getAttribute('d')).toMatch(/^M/);
+  expect(await page.locator('[data-testid="focus-dust"] path').getAttribute('d')).toMatch(/^M/);
   await expect(page.getByTestId('focus-reason')).toHaveText('설레는 마음이 이어진 모양');
 
   // 점의 보이는 동그라미: 카드·이유 줄과 겹치지 않고 화면 가장자리 ≥ 12px, 점끼리 중심 거리 ≥ 26
@@ -146,6 +150,7 @@ test('포커스: 같은 주제 메모 = 점(카드 밖·화면 안·간격 ≥ 2
   await expect(tDot).toHaveAttribute('data-on', '1');
   await expect.poll(async () => (await tDot.locator('i').boundingBox())!.width).toBeGreaterThan(small.width * 1.5);
   // 맨 처음 메모로 옮겨 두고 앞뒤를 본다
+  await rested(page);
   if (target !== order[0]) await page.locator(`[data-testid="focus-dot"][data-memo-id="${order[0]}"]`).click({ force: true });
   await expect(focus).toHaveAttribute('data-focus-memo', order[0]!);
   // 손가락 왼쪽 → 다음(오름차순), 오른쪽 → 이전
@@ -165,12 +170,93 @@ test('포커스: 같은 주제 메모 = 점(카드 밖·화면 안·간격 ≥ 2
   await expect(focus).toHaveAttribute('data-focus-memo', order[1]!);
   // 마지막에서 다음은 그대로
   const lastId = order[order.length - 1]!;
+  await rested(page);
   await page.locator(`[data-testid="focus-dot"][data-memo-id="${lastId}"]`).click({ force: true });
   await expect(focus).toHaveAttribute('data-focus-memo', lastId);
   await swipe(page, -80);
   await page.waitForTimeout(300);
   await expect(focus).toHaveAttribute('data-focus-memo', lastId);
   await expect(page.getByTestId('memo-focus')).toHaveAttribute('data-phase', 'open');
+});
+
+test('포커스: 밀기 시작하면 카드가 작게 흐려지고 모양이 화면 가득 드러나며, 멈추면 다음 메모 카드가 정중앙 제 크기로(F10)', async ({ page }) => {
+  await boot(page);
+  const { front, memoId } = await frontCard(page);
+  const order = await orderOf(page, front);
+  expect(order.length).toBeGreaterThanOrEqual(3);
+  await page.evaluate(async (tid) => (window as unknown as { __kk: KkDb }).__kk.db.topics.update(tid, { shape: 'footprints' }), front);
+  const focus = await openFocus(page, memoId);
+  const root = page.getByTestId('memo-focus');
+  const opacityOf = (id: string) => page.getByTestId(id).evaluate((e) => Number(getComputedStyle(e).opacity));
+  // 쉴 때: 큰 카드, 옅은 먼지만, 진한 먼지·빛은 안 보임
+  await expect(root).not.toHaveAttribute('data-revealed', '1');
+  expect(await opacityOf('focus-dust-full')).toBeLessThan(0.05);
+  expect(await opacityOf('focus-dust')).toBeGreaterThan(0.95);
+
+  const i = order.indexOf(memoId);
+  const delta = i < order.length - 1 ? 1 : -1;
+  const target = order[i + delta]!;
+  const dx = delta === 1 ? -90 : 90;
+  const x0 = W / 2 - dx / 2;
+  const y = H - 70;
+  await page.mouse.move(x0, y);
+  await page.mouse.down();
+  // 끄는 거리만큼 드러난다(60px에 다)
+  for (let k = 1; k <= 3; k++) await page.mouse.move(x0 + (dx * k) / 9, y);
+  const half = (await focus.boundingBox())!.width / (W - 68);
+  expect(half).toBeLessThan(0.95);
+  expect(half).toBeGreaterThan(0.5);
+  for (let k = 4; k <= 9; k++) await page.mouse.move(x0 + (dx * k) / 9, y);
+  // 밀고 있는 동안: 카드 배율 < 0.6, 진한 먼지가 보이고 옅은 먼지는 사라지며, 갈 점이 빛난다
+  const mid = (await focus.boundingBox())!;
+  expect(mid.width / (W - 68)).toBeLessThan(0.6);
+  expect(await focus.evaluate((e) => Number(getComputedStyle(e.parentElement!).opacity))).toBeLessThan(0.3);
+  expect(await opacityOf('focus-dust-full')).toBeGreaterThan(0.9);
+  expect(await opacityOf('focus-dust')).toBeLessThan(0.1);
+  await expect(page.locator(`[data-testid="focus-dot"][data-memo-id="${target}"]`)).toHaveAttribute('data-aim', '1');
+  expect(await opacityOf('focus-halo')).toBeGreaterThan(0.9);
+  // 드러난 모양은 비율 그대로 화면 폭 거의 가득(먼지 상자 폭 ≥ 화면 폭의 60%)
+  const dustBox = await page.locator('[data-testid="focus-dust-full"] path').evaluate((e) => ({ width: (e as SVGGraphicsElement).getBBox().width }));
+  expect(dustBox.width).toBeGreaterThan(W * 0.6);
+  await page.mouse.up();
+
+  // 멈추면: 그 메모로 바뀌고 카드가 정중앙 제 크기로(±8), 빛은 그 점 자리로
+  await expect(focus).toHaveAttribute('data-focus-memo', target);
+  await rested(page);
+  const b = (await focus.boundingBox())!;
+  expect(Math.abs(b.width - (W - 68))).toBeLessThanOrEqual(2);
+  expect(Math.abs(b.x + b.width / 2 - W / 2)).toBeLessThanOrEqual(8);
+  expect(Math.abs(b.y + b.height / 2 - H / 2)).toBeLessThanOrEqual(8);
+  expect(await opacityOf('focus-dust-full')).toBeLessThan(0.05);
+  await expect(page.locator('[data-testid="focus-dot"][data-on="1"]')).toHaveAttribute('data-memo-id', target);
+
+  // 조금만 끌고 놓으면(넘기지 않음) 되돌아온다
+  await page.mouse.move(W / 2, y);
+  await page.mouse.down();
+  for (let k = 1; k <= 4; k++) await page.mouse.move(W / 2 + (25 * k) / 4, y);
+  expect((await focus.boundingBox())!.width / (W - 68)).toBeLessThan(0.9);
+  await page.mouse.up();
+  await rested(page);
+  await expect(focus).toHaveAttribute('data-focus-memo', target);
+  expect(Math.abs((await focus.boundingBox())!.width - (W - 68))).toBeLessThanOrEqual(2);
+});
+
+test('포커스: 덮개가 진하고 펼친 주제의 지구본 카드는 포커스 동안 숨으며, 닫으면 다시 보인다(F10)', async ({ page }) => {
+  await boot(page);
+  const { front, memoId } = await frontCard(page);
+  const cards = page.locator(`.g-cluster[data-topic-id="${front}"] .g-card[data-memo-id]`);
+  const visibilities = () => cards.evaluateAll((els) => els.map((e) => getComputedStyle(e).visibility));
+  expect(await visibilities()).toContain('visible');
+  await openFocus(page, memoId);
+  await expect.poll(async () => (await visibilities()).filter((v) => v !== 'hidden').length).toBe(0);
+  const bg = await page.locator('.mp-backdrop').evaluate((e) => getComputedStyle(e).backgroundColor);
+  expect(Number(bg.match(/rgba?\([^)]*,\s*([\d.]+)\)/)![1])).toBeGreaterThanOrEqual(0.8);
+  // 다른 주제의 카드는 숨기지 않는다(흐릿하게 계속 돈다)
+  const others = await page.locator(`.g-cluster:not([data-topic-id="${front}"])`).evaluateAll((els) => els.map((e) => getComputedStyle(e).visibility));
+  expect(others.every((v) => v === 'visible')).toBe(true);
+  await tapEmpty(page);
+  await expect(page.getByTestId('memo-focus')).toHaveCount(0);
+  await expect.poll(async () => (await visibilities()).every((v) => v === 'visible')).toBe(true);
 });
 
 /** 정면 주제에 메모를 keep개만 남기고 나머지는 다른 주제로 옮긴다 → 남은 메모 id(만든 순서) */

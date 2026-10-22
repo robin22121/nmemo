@@ -1,9 +1,9 @@
-import { animate, motion, useMotionValue, useReducedMotion } from 'framer-motion';
+import { animate, motion, useMotionValue, useMotionValueEvent, useReducedMotion, useTransform, type MotionValue } from 'framer-motion';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type RefObject } from 'react';
 import { flushSync } from 'react-dom';
 import { connectedTopics, visibleMoves } from '../core/connections';
-import { afterDelete, FOCUS, josaWa, nearestDot, spacedPositions } from '../core/layout/focus';
+import { afterDelete, FOCUS, fitSquare, josaWa, nearestDot, REVEAL, spacedPositions } from '../core/layout/focus';
 import { BASIC_EMOTIONS } from '../core/palette';
 import { getShape, sampleShape, SHAPE_MIN_MEMOS, type Box as ShapeBox, type Rect } from '../core/shapes';
 import { MEMO_KINDS } from '../core/types';
@@ -22,12 +22,12 @@ const NEUTRAL = '#c9c2b0';
 const SIDE = 34;
 const CARD_R = 28;
 const MAX_H = 0.4;
-/** 카드 아래 모양 이유 줄(F8)이 차지할 수 있는 높이(px, 두 줄) */
-const REASON_H = 40;
 /** 펼친 상태(고치기·설정·연결)에서 카드가 화면 위에서 떨어지는 여백(E7) */
 const PAD = 12;
 /** 앞뒤 이동 감속 곡선(D34): 처음 빠르게 → 끝에서 서서히 */
 const GLIDE = { duration: 0.5, ease: [0.16, 1, 0.3, 1] as const };
+/** 모양 드러내기(F10) 시작: 빠르게 */
+const REVEAL_IN = { duration: REVEAL.inS, ease: [0.2, 0, 0.2, 1] as const };
 
 interface Props {
   memoId: string | null;
@@ -495,10 +495,33 @@ function CardBody({ memo, topics, order, onClose, onSelect, notify, editing, dra
 
 type Phase = 'grow' | 'open' | 'closing' | 'shrink';
 
-interface Dot { id: string; x: number; y: number; color?: string }
+/** 메모 점: 쉴 때 자리(x,y, 카드를 피함)와 다 드러났을 때 자리(fx,fy, 모양 윤곽 전체). 한쪽에만 있으면 다른 쪽에서는 사라진다 */
+interface Dot { id: string; x: number; y: number; fx: number; fy: number; rest: boolean; full: boolean; color?: string }
+
+/** 드러난 정도 r(0~1)에서 점의 자리·불투명도 */
+const dotAt = (d: Dot, r: number) => ({ x: d.x + (d.fx - d.x) * r, y: d.y + (d.fy - d.y) * r, o: d.rest ? (d.full ? 1 : 1 - r) : d.full ? r : 0 });
+
+function SkyDot({ d, reveal, on, aim }: { d: Dot; reveal: MotionValue<number>; on: boolean; aim: boolean }) {
+  const left = useTransform(reveal, (r) => dotAt(d, r).x);
+  const top = useTransform(reveal, (r) => dotAt(d, r).y);
+  const opacity = useTransform(reveal, (r) => dotAt(d, r).o);
+  return (
+    <motion.span
+      className={`mf-dot${on ? ' on' : ''}${aim ? ' aim' : ''}${d.color ? ' link' : ''}`}
+      data-testid="focus-dot"
+      data-memo-id={d.id}
+      data-on={on ? '1' : undefined}
+      data-aim={aim ? '1' : undefined}
+      style={{ left, top, opacity, ...(d.color ? { ['--lc' as string]: d.color } : {}) }}
+      aria-hidden
+    >
+      <i />
+    </motion.span>
+  );
+}
 
 /**
- * 메모 포커스 화면(F1~F9, E1의 열고 닫기 재사용): 누른 지구본 카드 자리에서 커져 화면 정중앙의 읽기 카드가 되고,
+ * 메모 포커스 화면(F1~F10, E1의 열고 닫기 재사용): 누른 지구본 카드 자리에서 커져 화면 정중앙의 읽기 카드가 되고,
  * 같은 주제의 메모는 주제 모양 윤곽 위의 빛나는 점(시간순), 윤곽은 옅은 먼지. 밀어서 앞뒤, 점을 눌러 그 메모로, 빈 곳을 눌러 닫는다.
  * 고치기·설정·연결을 펼치면 카드가 위로 올라가고(E7) 점은 숨는다. 뒤 지구본의 배경 주제는 계속 돈다(F5).
  */
@@ -562,13 +585,31 @@ export function MemoFocus({ memoId, onClose, onSelect, notify }: Props) {
   const token = useRef(0);
   const prevFocus = useRef<Element | null>(null);
   const dragX = useMotionValue(0);
-  const gesture = useRef<{ id: number; x0: number; y0: number; lock: 'h' | 'v' | null; inCard: boolean } | null>(null);
+  // 모양 드러내기(F10): 0 = 쉬는 큰 카드, 1 = 카드가 작게 흐려지고 모양·점이 다 보임
+  const reveal = useMotionValue(0);
+  const cardScale = useTransform(reveal, [0, 1], [1, REVEAL.scale]);
+  const cardOpacity = useTransform(reveal, [0, 1], [1, REVEAL.opacity]);
+  const restDustOpacity = useTransform(reveal, [0, 1], [1, 0]);
+  const fullDustOpacity = reveal;
+  const seq = useRef(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  // 드러난 동안 표시(시험·스타일용): 0이 아니면 data-revealed
+  useMotionValueEvent(reveal, 'change', (r) => {
+    const el = rootRef.current;
+    if (!el) return;
+    if (r > 0.001) el.setAttribute('data-revealed', '1');
+    else el.removeAttribute('data-revealed');
+  });
+  const [aim, setAim] = useState<string | null>(null);
+  const aimRef = useRef<string | null>(null);
+  const gesture = useRef<{ id: number; x0: number; y0: number; lock: 'h' | 'v' | null; inCard: boolean; r0: number } | null>(null);
   // 밀고 뗀 손가락이 카드 안 버튼·본문의 클릭(고치기 등)으로 이어지지 않게
   const swallowClick = useRef(false);
   const live = useRef({ shown, phase, editing, draft, reduced, order, drawer });
   live.current = { shown, phase, editing, draft, reduced, order, drawer };
 
   const expanded = editing || drawer !== null;
+  const closingNow = phase === 'closing' || phase === 'shrink';
 
   const commitEdit = useCallback(async () => {
     const { editing: on, draft: text, shown: id } = live.current;
@@ -615,6 +656,10 @@ export function MemoFocus({ memoId, onClose, onSelect, notify }: Props) {
 
   const startClose = async () => {
     const my = ++token.current;
+    // 드러내던 중이면 멈추고 큰 카드로(닫히는 껍데기는 큰 카드에서 줄어든다)
+    seq.current++;
+    reveal.stop();
+    reveal.set(0);
     setPhase('closing');
     await commitEdit();
     await keyboardClosed();
@@ -718,7 +763,7 @@ export function MemoFocus({ memoId, onClose, onSelect, notify }: Props) {
     if (!to) setPhase('open');
   }, [phase, ghost]);
 
-  // 점이 피할 사각형: 카드가 가장 클 때(최대 높이) + 모양 이유 줄 자리. 메모마다 카드 높이가 달라도 모양·점은 제자리(F3)
+  // 점이 피할 사각형: 카드가 가장 클 때(최대 높이, 모양 이유 줄은 카드 안). 메모마다 카드 높이가 달라도 모양·점은 제자리(F3)
   useEffect(() => {
     if (!shown) return;
     const measure = () => {
@@ -727,7 +772,7 @@ export function MemoFocus({ memoId, onClose, onSelect, notify }: Props) {
       const h = window.innerHeight;
       const half = Math.round(h * MAX_H) / 2;
       const m = FOCUS.dot / 2 + 6; // 점 반지름 + 틈
-      const avoid = { l: SIDE - m, r: w - SIDE + m, t: h / 2 - half - m, b: h / 2 + half + REASON_H + m };
+      const avoid = { l: SIDE - m, r: w - SIDE + m, t: h / 2 - half - m, b: h / 2 + half + m };
       setGeom((g) => (g && g.w === w && g.h === h && g.top === ins.top && g.bottom === ins.bottom ? g : { w, h, top: ins.top, bottom: ins.bottom, avoid }));
     };
     measure();
@@ -735,39 +780,89 @@ export function MemoFocus({ memoId, onClose, onSelect, notify }: Props) {
     return () => window.removeEventListener('resize', measure);
   }, [shown]);
 
-  // 점·먼지(F2·F9): 화면 가장자리에서 12px 안쪽 상자, 카드를 피해 시간순으로. 최근 24개까지, 간격이 안 나오면 최근 것부터
-  const { dots, dust } = useMemo(() => {
-    if (!geom || order.length < 2) return { dots: [] as Dot[], dust: '' };
+  // 점·먼지(F2·F9·F10): 화면 가장자리에서 12px 안쪽 상자(아래 위치 막대 자리 빼고).
+  // 쉴 때 = 그 상자에 맞춰 카드를 피해 시간순, 드러낼 때 = 비율 그대로 가장 큰 정사각형에 윤곽 전체. 최근 24개까지, 간격이 안 나오면 최근 것부터
+  const { dots, dust, dustFull } = useMemo(() => {
+    if (!geom || order.length < 2) return { dots: [] as Dot[], dust: '', dustFull: '' };
     const edge = 12 + FOCUS.dot / 2;
     const box: ShapeBox = { x: edge, y: geom.top + edge, w: geom.w - edge * 2, h: geom.h - geom.top - geom.bottom - edge * 2 - 28 };
+    const square = fitSquare(box);
     const ids = order.slice(-FOCUS.maxDots);
-    const pos = spacedPositions(topic?.shape, ids.length, box, geom.avoid);
-    const kept = ids.slice(ids.length - pos.length);
-    const dots = kept.map((id, i) => ({ id, x: pos[i]![0], y: pos[i]![1], color: linkColor.get(id) }));
-    let dust = '';
-    if (order.length >= SHAPE_MIN_MEMOS) {
-      for (const [x, y] of sampleShape(getShape(topic?.shape), FOCUS.dust, box, geom.avoid)) dust += `M${(x - 1.2).toFixed(1)} ${y.toFixed(1)}a1.2 1.2 0 1 0 2.4 0a1.2 1.2 0 1 0 -2.4 0`;
+    const restPos = spacedPositions(topic?.shape, ids.length, box, geom.avoid);
+    const fullPos = spacedPositions(topic?.shape, ids.length, square);
+    const rest = new Map(ids.slice(ids.length - restPos.length).map((id, i) => [id, restPos[i]!]));
+    const full = new Map(ids.slice(ids.length - fullPos.length).map((id, i) => [id, fullPos[i]!]));
+    const dots: Dot[] = [];
+    for (const id of ids) {
+      const a = rest.get(id);
+      const b = full.get(id);
+      if (!a && !b) continue;
+      const [x, y] = a ?? b!;
+      const [fx, fy] = b ?? a!;
+      dots.push({ id, x, y, fx, fy, rest: !!a, full: !!b, color: linkColor.get(id) });
     }
-    return { dots, dust };
+    const path = (pts: [number, number][]) => pts.map(([x, y]) => `M${(x - 1.2).toFixed(1)} ${y.toFixed(1)}a1.2 1.2 0 1 0 2.4 0a1.2 1.2 0 1 0 -2.4 0`).join('');
+    const shape = getShape(topic?.shape);
+    const many = order.length >= SHAPE_MIN_MEMOS;
+    return { dots, dust: many ? path(sampleShape(shape, FOCUS.dust, box, geom.avoid)) : '', dustFull: many ? path(sampleShape(shape, FOCUS.dust, square)) : '' };
   }, [geom, order, topic?.shape, linkColor]);
+
+  const showSky = phase === 'open' && !expanded && !!geom;
+
+  // 펼친 주제의 지구본 카드는 포커스 동안 숨긴다(카드 둘레로 비쳐 보이지 않게, F10). 닫기 시작하면 다시 보인다
+  const hideTopic = shown && !closingNow ? memo?.topicId : undefined;
+  useEffect(() => {
+    if (!hideTopic) return;
+    const el = document.querySelector<HTMLElement>(`.g-cluster[data-topic-id="${CSS.escape(hideTopic)}"]`);
+    el?.setAttribute('data-mf-hide', '1');
+    return () => el?.removeAttribute('data-mf-hide');
+  }, [hideTopic]);
+
+  /** 드러내고 → 그 메모로 바꾸고 → 빛이 옮겨 가는 동안 머문 뒤 → 큰 카드로 돌아온다(F10, D34 감속) */
+  const travel = useCallback(
+    async (id: string, delta: number) => {
+      const my = ++seq.current;
+      aimRef.current = null;
+      setAim(null);
+      if (live.current.reduced) {
+        reveal.set(0);
+        setDir(delta);
+        onSelect(id);
+        return;
+      }
+      if (reveal.get() < 0.99) await animate(reveal, 1, REVEAL_IN);
+      if (my !== seq.current) return;
+      setDir(delta);
+      onSelect(id);
+      await sleep(REVEAL.holdMs);
+      if (my !== seq.current) return;
+      await animate(reveal, 0, GLIDE);
+    },
+    [onSelect, reveal],
+  );
+
+  /** 드러낸 채 멈췄으면(취소·탭) 큰 카드로 되돌린다 */
+  const settle = () => {
+    aimRef.current = null;
+    setAim(null);
+    if (reveal.get() > 0) void animate(reveal, 0, spring.snappy);
+  };
 
   const go = useCallback(
     (delta: number) => {
       const { order: o, shown: id } = live.current;
       const next = id ? o[o.indexOf(id) + delta] : undefined;
       if (!next) return false;
-      setDir(delta);
-      onSelect(next);
+      void travel(next, delta);
       return true;
     },
-    [onSelect],
+    [travel],
   );
 
   const pickDot = (id: string) => {
     const { order: o, shown: cur } = live.current;
-    if (!cur || id === cur) return;
-    setDir(o.indexOf(id) > o.indexOf(cur) ? 1 : -1);
-    onSelect(id);
+    if (!cur || id === cur) return settle();
+    void travel(id, o.indexOf(id) > o.indexOf(cur) ? 1 : -1);
   };
 
   // 열려 있는 동안 문서 자체는 스크롤되지 않는다
@@ -798,7 +893,10 @@ export function MemoFocus({ memoId, onClose, onSelect, notify }: Props) {
   const onPointerDown = (e: RPointerEvent<HTMLElement>) => {
     swallowClick.current = false;
     if (live.current.phase !== 'open' || !e.isPrimary) return;
-    gesture.current = { id: e.pointerId, x0: e.clientX, y0: e.clientY, lock: null, inCard: !!(e.target as Element).closest('.mf-card') };
+    // 드러내는 중에 다시 만지면 그 자리에서 멈추고 손가락을 따른다
+    seq.current++;
+    reveal.stop();
+    gesture.current = { id: e.pointerId, x0: e.clientX, y0: e.clientY, lock: null, inCard: !!(e.target as Element).closest('.mf-card'), r0: reveal.get() };
   };
   const onPointerMove = (e: RPointerEvent<HTMLElement>) => {
     const g = gesture.current;
@@ -806,7 +904,17 @@ export function MemoFocus({ memoId, onClose, onSelect, notify }: Props) {
     const dx = e.clientX - g.x0;
     const dy = e.clientY - g.y0;
     if (!g.lock && Math.hypot(dx, dy) > FOCUS.tapSlop) g.lock = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
-    if (g.lock === 'h' && !expanded) dragX.set(dx * 0.5);
+    if (g.lock !== 'h' || expanded) return;
+    dragX.set(dx * 0.5);
+    // 끄는 만큼 모양이 드러나고(60px에 다), 넘길 만큼 밀면 갈 점이 빛난다(F10)
+    if (!showSky || dots.length < 2) return;
+    reveal.set(Math.max(g.r0, Math.min(1, Math.abs(dx) / REVEAL.dragPx)));
+    const { order: o, shown: cur } = live.current;
+    const t = cur && Math.abs(dx) >= FOCUS.swipe ? (o[o.indexOf(cur) + (dx < 0 ? 1 : -1)] ?? null) : null;
+    if (t !== aimRef.current) {
+      aimRef.current = t;
+      setAim(t);
+    }
   };
   const onPointerUp = (e: RPointerEvent<HTMLElement>) => {
     const g = gesture.current;
@@ -815,13 +923,19 @@ export function MemoFocus({ memoId, onClose, onSelect, notify }: Props) {
     const dx = e.clientX - g.x0;
     if (g.lock) swallowClick.current = true;
     if (g.lock === 'h') {
-      if (!expanded && Math.abs(dx) >= FOCUS.swipe) go(dx < 0 ? 1 : -1);
       void animate(dragX, 0, GLIDE);
+      if (!(!expanded && Math.abs(dx) >= FOCUS.swipe && go(dx < 0 ? 1 : -1))) settle();
       return;
     }
-    if (g.lock || g.inCard) return;
+    if (g.lock || g.inCard) return settle();
     if (!expanded) {
-      const id = nearestDot(dots, e.clientX, e.clientY);
+      // 지금 보이는 자리(드러난 정도에 따라)의 점
+      const r = reveal.get();
+      const id = nearestDot(
+        dots.map((d) => ({ id: d.id, ...dotAt(d, r) })).filter((d) => d.o > 0.5),
+        e.clientX,
+        e.clientY,
+      );
       if (id) return pickDot(id);
     }
     onClose();
@@ -829,12 +943,12 @@ export function MemoFocus({ memoId, onClose, onSelect, notify }: Props) {
   const onPointerCancel = () => {
     gesture.current = null;
     void animate(dragX, 0, GLIDE);
+    settle();
   };
 
   const box = (b: Box) => ({ left: b.left, top: b.top, width: b.width, height: b.height, borderRadius: b.r });
-  const closingNow = phase === 'closing' || phase === 'shrink';
   const idx = memo ? order.indexOf(memo.id) : -1;
-  const showSky = phase === 'open' && !expanded && !!geom;
+  const halo = dots.find((d) => d.id === memo?.id && d.full);
 
   return (
     <>
@@ -864,6 +978,7 @@ export function MemoFocus({ memoId, onClose, onSelect, notify }: Props) {
       )}
       {shown && phase !== 'shrink' && (
         <div
+          ref={rootRef}
           className="mf"
           data-testid="memo-focus"
           data-phase={phase ?? undefined}
@@ -882,72 +997,81 @@ export function MemoFocus({ memoId, onClose, onSelect, notify }: Props) {
           }}
         >
           {showSky && dust && (
-            <svg className="mf-dust" data-testid="focus-dust" data-shape={topic?.shape ?? 'circle'} width={geom.w} height={geom.h} aria-hidden>
+            <motion.svg className="mf-dust" data-testid="focus-dust" data-shape={topic?.shape ?? 'circle'} width={geom.w} height={geom.h} style={{ opacity: restDustOpacity }} aria-hidden>
               <path d={dust} />
-            </svg>
+            </motion.svg>
+          )}
+          {showSky && dustFull && (
+            <motion.svg className="mf-dust full" data-testid="focus-dust-full" width={geom.w} height={geom.h} style={{ opacity: fullDustOpacity }} aria-hidden>
+              <path d={dustFull} />
+            </motion.svg>
+          )}
+          {showSky && halo && (
+            <motion.span
+              className="mf-halo"
+              data-testid="focus-halo"
+              aria-hidden
+              style={{ opacity: reveal }}
+              initial={false}
+              animate={{ left: halo.fx, top: halo.fy }}
+              transition={reduced ? { duration: 0 } : GLIDE}
+            />
           )}
           {showSky &&
             dots.map((d) => (
-              <span
-                key={d.id}
-                className={`mf-dot${d.id === memo?.id ? ' on' : ''}${d.color ? ' link' : ''}`}
-                data-testid="focus-dot"
-                data-memo-id={d.id}
-                data-on={d.id === memo?.id ? '1' : undefined}
-                style={{ left: d.x, top: d.y, ...(d.color ? { ['--lc' as string]: d.color } : {}) }}
-                aria-hidden
-              >
-                <i />
-              </span>
+              <SkyDot key={`${d.id}:${d.x.toFixed(1)},${d.y.toFixed(1)},${d.fx.toFixed(1)},${d.fy.toFixed(1)},${d.rest ? 1 : 0}${d.full ? 1 : 0}`} d={d} reveal={reveal} on={d.id === memo?.id} aim={d.id === aim} />
             ))}
           {cardOn && memo && (
             <div ref={stackRef} className="mf-stack">
-              <motion.section
-                ref={cardRef}
-                className="mf-card mf-card-skin"
-                data-testid="memo-sheet"
-                data-focus-memo={memo.id}
-                data-flip-from={flipFrom}
-                data-editing={editing ? '1' : undefined}
-                role="dialog"
-                aria-modal="true"
-                aria-label="메모"
-                tabIndex={-1}
-                style={{ x: dragX }}
-                initial={false}
-                animate={{ opacity: phase === 'open' ? 1 : 0 }}
-                transition={{ duration: phase === 'closing' ? 0.13 : 0.2 }}
-              >
-                <motion.div
-                  key={memo.id}
-                  className="mf-inner"
-                  initial={dir && !reduced ? { x: dir * 56, opacity: 0.2 } : false}
-                  animate={{ x: 0, opacity: 1 }}
-                  transition={GLIDE}
+              <motion.div className="mf-shrink" style={{ scale: cardScale, opacity: cardOpacity }}>
+                <motion.section
+                  ref={cardRef}
+                  className="mf-card mf-card-skin"
+                  data-testid="memo-sheet"
+                  data-focus-memo={memo.id}
+                  data-flip-from={flipFrom}
+                  data-editing={editing ? '1' : undefined}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="메모"
+                  tabIndex={-1}
+                  style={{ x: dragX }}
+                  initial={false}
+                  animate={{ opacity: phase === 'open' ? 1 : 0 }}
+                  transition={{ duration: phase === 'closing' ? 0.13 : 0.2 }}
                 >
-                  <CardBody
-                    memo={memo}
-                    topics={topics}
-                    order={order}
-                    onClose={onClose}
-                    onSelect={onSelect}
-                    notify={notify}
-                    editing={editing}
-                    draft={draft}
-                    onDraft={setDraft}
-                    startEdit={startEdit}
-                    commitEdit={() => void commitEdit()}
-                    editRef={editRef}
-                    drawer={drawer}
-                    setDrawer={setDrawer}
-                  />
-                </motion.div>
-              </motion.section>
-              {topic?.shapeReason && !expanded && phase === 'open' && order.length >= SHAPE_MIN_MEMOS && (
-                <p className="mf-reason" data-testid="focus-reason">
-                  {topic.shapeReason}
-                </p>
-              )}
+                  <motion.div
+                    key={memo.id}
+                    className="mf-inner"
+                    initial={dir && !reduced ? { x: dir * 56, opacity: 0.2 } : false}
+                    animate={{ x: 0, opacity: 1 }}
+                    transition={GLIDE}
+                  >
+                    <CardBody
+                      memo={memo}
+                      topics={topics}
+                      order={order}
+                      onClose={onClose}
+                      onSelect={onSelect}
+                      notify={notify}
+                      editing={editing}
+                      draft={draft}
+                      onDraft={setDraft}
+                      startEdit={startEdit}
+                      commitEdit={() => void commitEdit()}
+                      editRef={editRef}
+                      drawer={drawer}
+                      setDrawer={setDrawer}
+                    />
+                    {/* 모양 이유(F8·F10): 카드 안 맨 아래 작은 회색 글씨, 다른 것과 겹치지 않는다 */}
+                    {topic?.shapeReason && !expanded && order.length >= SHAPE_MIN_MEMOS && (
+                      <p className="mf-reason" data-testid="focus-reason">
+                        {topic.shapeReason}
+                      </p>
+                    )}
+                  </motion.div>
+                </motion.section>
+              </motion.div>
             </div>
           )}
           {showSky && order.length > 1 && idx >= 0 && (

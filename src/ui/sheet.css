@@ -17,8 +17,9 @@
 
 /* ── 메모 포커스(F1~F9, E8): 정중앙 읽기 카드 + 주제 모양 윤곽 위의 메모 점. 지구본 카드·쓰기 칸(D21)과 같은 재료 ── */
 html.mp-open, html.mp-open body { overflow: hidden; height: 100%; overscroll-behavior: none; }
-/* 뒤 지구본은 종이빛 덮개로 살짝 가라앉고 배경 주제는 계속 돈다(F5) */
-.mp-backdrop { position: fixed; inset: 0; z-index: 49; background: rgba(246, 241, 231, 0.62); pointer-events: none; }
+/* 뒤 지구본은 진한 종이빛 덮개로 가라앉고 배경 주제는 흐릿하게 계속 돈다(F5·F10). 펼친 주제의 카드는 포커스 동안 숨긴다 */
+.mp-backdrop { position: fixed; inset: 0; z-index: 49; background: rgba(246, 241, 231, 0.85); pointer-events: none; }
+.g-cluster[data-mf-hide] { visibility: hidden; }
 .mf { position: fixed; inset: 0; z-index: 50; touch-action: none; user-select: none; -webkit-user-select: none; }
 .mp-ghost { position: fixed; z-index: 51; pointer-events: none; }
 .mf-card-skin {
@@ -27,6 +28,8 @@ html.mp-open, html.mp-open body { overflow: hidden; height: 100%; overscroll-beh
   box-shadow: 0 0 40px 12px color-mix(in srgb, var(--c) 18%, transparent), 0 16px 34px rgba(120, 96, 60, 0.13);
 }
 .mf-stack { position: absolute; left: 34px; right: 34px; top: 50%; }
+/* 넘길 때 카드가 작게 줄며 흐려진다(F10, 배율·불투명도는 손가락·감속 곡선을 따른다) */
+.mf-shrink { transform-origin: 50% 50%; }
 .mf-card {
   position: relative; display: block; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
   padding: 16px 18px 16px; touch-action: pan-y; user-select: text; -webkit-user-select: text; outline: none;
@@ -50,14 +53,20 @@ html.mp-open, html.mp-open body { overflow: hidden; height: 100%; overscroll-beh
 .mf-conn { display: block; margin-top: 12px; padding: 4px 0; font-size: 13px; color: var(--ink-soft); text-align: left; }
 .mf-conn b { font-weight: 600; color: color-mix(in srgb, var(--lc) 70%, var(--ink)); }
 .mf-drawer { padding-top: 2px; }
-/* 모양 이유(F8): 카드 아래 작은 회색 한두 줄 */
+/* 모양 이유(F8·F10): 카드 안 맨 아래 작은 회색 한두 줄 */
 .mf-reason {
-  position: absolute; left: 8px; right: 8px; top: 100%; margin: 10px 0 0; font-size: 12px; line-height: 1.4; color: var(--ink-soft); text-align: center;
+  margin: 12px 2px 0; font-size: 12px; line-height: 1.4; color: var(--ink-soft);
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; pointer-events: none;
 }
-/* 윤곽 먼지(F2): 옅은 작은 점, SVG 한 요소 */
+/* 윤곽 먼지(F2·F10): 쉴 때는 옅게(카드를 피해), 넘길 때는 비율 그대로 화면 가득 진하게. 각각 SVG 한 요소, 불투명도는 드러난 정도를 따른다 */
 .mf-dust { position: absolute; left: 0; top: 0; pointer-events: none; }
 .mf-dust path { fill: color-mix(in srgb, var(--c) 55%, var(--ink-soft)); opacity: 0.4; }
+.mf-dust.full path { fill: color-mix(in srgb, var(--c) 65%, var(--ink)); opacity: 0.85; }
+/* 지금 메모의 빛(F10): 드러날 때만 보이고, 다음 메모 점으로 감속 곡선을 따라 옮겨 간다 */
+.mf-halo {
+  position: absolute; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, color-mix(in srgb, var(--c) 45%, transparent) 0%, transparent 70%);
+}
 /* 메모 점(F2·F9): 지름 12px, 누르는 영역 36px. 다른 주제와 이어진 메모는 그 주제 색 */
 .mf-dot { position: absolute; width: 36px; height: 36px; margin: -18px 0 0 -18px; display: grid; place-items: center; pointer-events: none; }
 .mf-dot i {
@@ -66,6 +75,7 @@ html.mp-open, html.mp-open body { overflow: hidden; height: 100%; overscroll-beh
   transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.45s;
 }
 .mf-dot.link i { background: color-mix(in srgb, var(--lc) 75%, #fffdf8); box-shadow: 0 0 0 2px color-mix(in srgb, var(--lc) 60%, transparent), 0 0 12px 4px color-mix(in srgb, var(--lc) 35%, transparent); }
+.mf-dot.aim i { transform: scale(1.5); box-shadow: 0 0 0 2px color-mix(in srgb, var(--c) 70%, transparent), 0 0 18px 6px color-mix(in srgb, var(--c) 45%, transparent); }
 .mf-dot.on i { transform: scale(1.8); box-shadow: 0 0 0 2px color-mix(in srgb, var(--c) 80%, transparent), 0 0 22px 8px color-mix(in srgb, var(--c) 45%, transparent); }
 /* 위치 막대(F3) */
 .mf-bar {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { afterDelete, FOCUS, josaWa, nearestDot, spacedPositions } from '../../src/core/layout/focus';
+import { afterDelete, FOCUS, fitSquare, josaWa, nearestDot, spacedPositions } from '../../src/core/layout/focus';
 import { SHAPE_IDS } from '../../src/core/shapes';
 
 // 390×844 화면, 가장자리 18px 안쪽 상자, 정중앙 카드(최대 높이 40%)를 피한다
@@ -64,5 +64,12 @@ describe('포커스 도우미', () => {
     expect(nearestDot(dots, 112, 100)).toBe('b');
     expect(nearestDot(dots, 100, 117)).toBe('a');
     expect(nearestDot(dots, 100, 130)).toBeNull();
+  });
+});
+
+describe('모양 드러내기 상자(F10)', () => {
+  it('세로로 긴 화면에서는 폭만 한 정사각형이 가운데에', () => {
+    expect(fitSquare({ x: 18, y: 18, w: 354, h: 780 })).toEqual({ x: 18, y: 18 + (780 - 354) / 2, w: 354, h: 354 });
+    expect(fitSquare({ x: 0, y: 0, w: 800, h: 400 })).toEqual({ x: 200, y: 0, w: 400, h: 400 });
   });
 });

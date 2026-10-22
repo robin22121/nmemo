@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AnalyzeRequest, ReorganizeRequest } from '../../src/core/organize/types';
 import { normalizeTopicColor } from '../../src/core/palette';
-import { InvalidResultError, validateReorganize, validateResult } from '../../src/core/organize/validate';
+import { InvalidResultError, trimPhrase, validateReorganize, validateResult } from '../../src/core/organize/validate';
 
 const req: AnalyzeRequest = {
   memo: { id: 'me', input: 'text', text: 'hi' },
@@ -98,6 +98,18 @@ describe('모양 검증', () => {
     const bad = validateReorganize({ topic: { name: 'x', shape: 'dragon', shapeReason: '  ' }, moves: [] }, rr);
     expect(bad.topic.shape).toBeUndefined();
     expect(bad.topic.shapeReason).toBeUndefined();
+  });
+  it('shapeReason이 40자를 넘으면 낱말 중간이 아니라 40자 안의 마지막 공백·문장부호 앞에서 자른다', () => {
+    const long = '작은 발걸음이 모여 하루를 만들고, 그 하루들이 다시 먼 길을 이룬다는 생각';
+    expect(Array.from(long).length).toBeGreaterThan(40);
+    const r = validateReorganize({ topic: { name: 'x', shapeReason: long }, moves: [] }, { topic: { id: 't', name: 'T', summary: '', nameLocked: false, shape: 'circle' }, members: [], otherTopics: [] });
+    expect(r.topic.shapeReason).toBe('작은 발걸음이 모여 하루를 만들고, 그 하루들이 다시 먼 길을 이룬다는');
+    expect(trimPhrase('짧은 구절', 40)).toBe('짧은 구절');
+    // 경계 바로 앞에서 끝나면 그대로, 끝의 쉼표는 떼어 낸다
+    expect(trimPhrase('가나다 라마바', 3)).toBe('가나다');
+    expect(trimPhrase('가나다라, 마바사아', 6)).toBe('가나다라');
+    // 앞쪽 절반 안에 경계가 없으면 그냥 자른다
+    expect(trimPhrase('가 나다라마바사아자차', 6)).toBe('가 나다라마');
   });
   it('analyze: newShape가 목록 밖이면 버린다', () => {
     expect(validateResult({ ...good, topic: { newName: '새', newSummary: '', newShape: 'cup' } }, req).topic).toEqual({ newName: '새', newSummary: '', newShape: 'cup' });
