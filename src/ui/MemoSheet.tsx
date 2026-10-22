@@ -10,7 +10,7 @@ import { getDb, type Memo } from '../db/schema';
 import { motionBus } from '../motion/bus';
 import { spring } from '../motion/presets';
 import { getQueue } from '../organize/runtime';
-import { GLOBE_ON, SHEET_STYLE } from './globe/config';
+import { SHEET_STYLE } from './globe/config';
 import { useObjectUrl } from './hooks';
 import { CloseIcon, PenIcon } from './icons';
 
@@ -357,7 +357,7 @@ function PanelBody({ memo, onClose, onSelect, notify, editing, draft, onDraft, s
                 );
                 return (
                   <li key={c.topicId} data-conn-topic={c.topicId} style={{ ['--c' as string]: t?.color ?? NEUTRAL }}>
-                    {GLOBE_ON && t ? (
+                    {t ? (
                       <button
                         type="button"
                         className="conn-head"

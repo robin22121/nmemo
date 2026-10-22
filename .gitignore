@@ -6,7 +6,5 @@ test-results
 playwright-report
 .env
 .env.local
-functions/node_modules
-functions/lib
 dist-artifact
 .vercel

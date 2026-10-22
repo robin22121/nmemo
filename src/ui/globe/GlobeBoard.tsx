@@ -17,6 +17,7 @@ import { GlobeComposer } from './Composer';
 import { MOTION, WRITE_START } from './config';
 import { TopicListSheet } from './TopicListSheet';
 import { GlobeEngine, type GlobeItem } from './engine';
+import '../board.css';
 import './globe.css';
 
 interface Cluster {
@@ -110,7 +111,7 @@ function FlightCard({ f, onLand }: { f: Flight; onLand: (f: Flight) => void }) {
 }
 
 /**
- * 지구본(천구) 보드(기본 화면, `?globe=0`이면 평면 보드). 주제가 화면 위아래 전체에 별처럼 흩어져 있고
+ * 지구본(천구) 보드(앱의 보드 화면). 주제가 화면 위아래 전체에 별처럼 흩어져 있고
  * 좌우로 돌리면 시선 높이가 다가오는 주제를 따라간다. 정가운데 가까운 주제일수록 이름표 둘레로 카드가 연속으로 펼쳐진다.
  * 회전은 GlobeEngine이 DOM에 직접 쓰고, React는 데이터·화면 크기가 바뀔 때만 다시 그린다.
  */

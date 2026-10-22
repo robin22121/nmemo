@@ -1,4 +1,4 @@
-/* 지구본(천구) 보드(기본 화면, ?globe=0이면 평면 보드). .board의 배경·touch-action:none을 그대로 쓴다. */
+/* 지구본(천구) 보드(앱의 보드 화면). .board의 배경·touch-action:none을 그대로 쓴다. */
 .g-board { user-select: none; -webkit-user-select: none; }
 .g-stage { position: absolute; inset: 0; isolation: isolate; }
 .g-board[data-blur='1'] .g-stage { filter: blur(6px); }
@@ -20,7 +20,6 @@
 }
 .g-tag {
   position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); transform-origin: 50% 50%; white-space: nowrap; z-index: 1;
-  /* 평면 보드 무리 이름표(.cluster-label)와 같은 크기 */
   font-size: 15px; font-weight: 700; letter-spacing: -0.01em; padding: 2px 10px; border-radius: 999px; cursor: pointer;
   color: color-mix(in srgb, var(--c) 45%, var(--ink)); background: rgba(255, 252, 245, 0.88); box-shadow: 0 1px 6px rgba(58, 50, 38, 0.08);
 }

@@ -1,8 +1,6 @@
-/** 지구본 보드 스위치(기본 켬, `?globe=0`이면 평면 보드)와 움직임 상수. 배치·투영 상수는 core/layout/globe.ts의 GLOBE. */
+/** 지구본 보드의 시험용 스위치와 움직임 상수. 배치·투영 상수는 core/layout/globe.ts의 GLOBE. */
 
 const params = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
-
-export const GLOBE_ON = params.get('globe') !== '0';
 
 /** 메모장(메모 상세) 두 안(E5): `?sheet=cover` 덮기(불투명 종이) / 기본 `glass` 반투명(주제 색 유리). 폰 비교 후 하나로 정하고 스위치를 없앤다 */
 export const SHEET_STYLE: 'cover' | 'glass' = params.get('sheet') === 'cover' ? 'cover' : 'glass';
@@ -21,7 +19,7 @@ export const MOTION = {
   maxVel: 900,
   /** 이만큼 움직이기 전까지는 탭으로 본다(px) */
   tapSlop: 8,
-  /** 카드를 이만큼 가만히 누르면 들어 올려 다른 주제로 옮길 수 있다(ms). 평면 보드(viewport.ts)의 들어 올림과 같은 값 */
+  /** 카드를 이만큼 가만히 누르면 들어 올려 다른 주제로 옮길 수 있다(ms) */
   liftMs: 450,
   /** 화면 왼쪽 가장자리는 뒤로가기 스와이프용으로 비운다(px) */
   edgeFree: 20,

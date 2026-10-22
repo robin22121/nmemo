@@ -12,17 +12,8 @@ export const spring = {
   glide: { type: 'spring', stiffness: 200, damping: 26 } satisfies Transition,
 };
 
-/** 정돈 중인 대기 카드: 숨쉬듯 천천히 커졌다 작아짐(scale 1↔1.04, 2.4s) */
-export const BREATH = {
-  animate: { scale: [1, 1.04, 1] },
-  transition: { duration: 2.4, repeat: Infinity, ease: 'easeInOut' } satisfies Transition,
-};
-
 /** 정돈 완료 비행 시간(초) */
 export const FLIGHT_SECONDS = 0.95;
-/** 재구성: 카드마다 출발 시차(초) */
-export const REORG_STAGGER = 0.08;
-export const REORG_FLIGHT_SECONDS = 0.85;
 
 export interface Pt { x: number; y: number }
 
@@ -36,9 +27,4 @@ export function arcKeyframes(from: Pt, to: Pt, lift = 120, t = 0.45): { x: numbe
   const dist = Math.hypot(to.x - from.x, to.y - from.y);
   const my = Math.min(from.y, to.y, baseY) - Math.min(lift, 40 + dist * 0.25);
   return { x: [from.x, mx, to.x], y: [from.y, my, to.y], times: [0, t, 1] };
-}
-
-/** 무리 출렁임: 중심에서 바깥으로 살짝 밀렸다 돌아오는 오프셋(scale 1→1.03→1에 해당) */
-export function wobbleOffset(card: Pt, center: Pt, amount = 0.03): Pt {
-  return { x: (card.x - center.x) * amount, y: (card.y - center.y) * amount };
 }
