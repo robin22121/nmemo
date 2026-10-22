@@ -15,7 +15,7 @@ interface Props {
   /** 저장 없이 닫기(덮개 탭·Esc). 초안은 남는다 */
   onDismiss: () => void;
   notify: (m: string) => void;
-  /** 주제 옆 +로 열었으면 그 주제(저장하면 그 주제에 고정) */
+  /** 집중 상태에서 아래 +로 열었으면 펼친 주제(저장하면 그 주제에 고정, 칩을 누르면 빠짐) */
   topic?: Topic | null;
   /** 주제 없이 열렸을 때의 색(마지막으로 읽던 주제 색). 없으면 기본색 */
   tint?: string;
@@ -29,13 +29,16 @@ interface Props {
  * + → [녹음](누르고 있는 동안 듣기) [사진]. 저장은 기존 경로(addMemo → pending → 대기열 깨우기) 후 쓰기 칸이 닫힌다(D6).
  * 쓰기 칸은 화면 정가운데. 누른 버튼(주제 옆 +) 자리에서 커지며 열리고 그 자리로 줄어들며 닫힌다(AnimatePresence).
  */
-export function GlobeComposer({ draft, onDraft, onSaved, onDismiss, notify, topic, tint, origin }: Props) {
+export function GlobeComposer({ draft, onDraft, onSaved, onDismiss, notify, topic: preset, tint, origin }: Props) {
   const reduced = !!useReducedMotion();
   const textRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const listenRef = useRef<Listening | null>(null);
   const down = useRef<{ x: number; y: number } | null>(null);
   const [focused, setFocused] = useState(false);
+  // 주제 칩을 누르면 빠져서 주제 없는(AI에게 맡기는) 메모가 된다
+  const [chipOff, setChipOff] = useState(false);
+  const topic = chipOff ? null : preset;
   const [plus, setPlus] = useState(false);
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState('');
@@ -145,8 +148,11 @@ export function GlobeComposer({ draft, onDraft, onSaved, onDismiss, notify, topi
         >
           {topic && (
             <div className="g-composer-topic" data-testid="composer-topic">
-              <i />
-              {topic.name}
+              <button type="button" className="g-composer-chip" data-testid="composer-topic-chip" aria-label={`${topic.name} 주제 빼기`} onClick={() => setChipOff(true)}>
+                <i />
+                {topic.name}
+                <CloseIcon />
+              </button>
             </div>
           )}
           <div className="g-composer-field">

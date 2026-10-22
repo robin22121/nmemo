@@ -35,9 +35,9 @@ test('지구본: 켜면 쓰기 칸, 첫 키 입력이 바로 들어가고 Enter�
   await expect(page.getByTestId('flight-card')).toHaveCount(0, { timeout: 5000 });
   await expect(page.getByTestId('pending-card')).toHaveCount(0);
 
-  // "새로 쓰기" 버튼은 없다. 정가운데 주제 옆 +로 쓰기 칸이 다시 열린다
+  // "새로 쓰기" 버튼은 없다. 아래 가운데 +로 쓰기 칸이 다시 열린다
   await expect(page.getByTestId('globe-write')).toHaveCount(0);
-  await page.locator(`.g-cluster[data-topic-id="${m.topicId}"] [data-testid="topic-plus"]`).click();
+  await page.getByTestId('plus-button').click();
   await expect(input).toBeVisible();
 });
 
@@ -49,19 +49,20 @@ test('지구본: 흐린 지구본을 탭하면 저장 없이 닫히고, 쓰던 �
   await expect(page.getByTestId('globe-composer')).toHaveCount(0);
   await expect(page.getByTestId('board-info')).toHaveAttribute('data-cards', '40');
   await expect(page.getByTestId('board')).toHaveAttribute('data-settled', '1');
-  await page.locator('.g-cluster[data-lod="open"] [data-testid="topic-plus"]').click();
+  await page.getByTestId('plus-button').click();
   await expect(input).toHaveValue('아직 다 못 쓴 생각');
 });
 
-test('지구본: 가운데 주제 옆 +를 누르면 쓰기 칸이 열리고, 쓴 메모는 그 주제에 붙는다(잠김)', async ({ page }) => {
+test('지구본: 집중 상태에서 아래 +를 누르면 펼친 주제 칩이 달린 쓰기 칸이 열리고, 쓴 메모는 그 주제에 붙는다(잠김). 주제 옆 +는 없다', async ({ page }) => {
   await page.goto('/?demo=1&reset=1&write=0');
   await expect(page.getByTestId('board-info')).toHaveAttribute('data-cards', '40');
-  const plus = page.locator('.g-cluster[data-lod="open"] [data-testid="topic-plus"]');
-  await expect(plus).toHaveCount(1);
-  await expect(plus).toBeVisible();
-  const topicId = await plus.evaluate((el) => el.closest('[data-topic-id]')!.getAttribute('data-topic-id'));
-  await plus.click();
-  await expect(page.getByTestId('composer-topic')).toBeVisible();
+  await expect(page.getByTestId('topic-plus')).toHaveCount(0);
+  const board = page.getByTestId('board');
+  await expect(board).toHaveAttribute('data-mode', 'focus');
+  const topicId = (await board.getAttribute('data-front'))!;
+  const name = await page.locator(`.g-cluster[data-topic-id="${topicId}"] .g-tag`).innerText();
+  await page.getByTestId('plus-button').click();
+  await expect(page.getByTestId('composer-topic')).toContainText(name.trim());
   await page.getByTestId('globe-composer-input').fill('전혀 상관없는 주말 등산 계획');
   await page.getByTestId('globe-send').click();
   await expect(page.getByTestId('globe-composer')).toHaveCount(0);
@@ -72,6 +73,39 @@ test('지구본: 가운데 주제 옆 +를 누르면 쓰기 칸이 열리고, �
   });
   expect(m.topicId).toBe(topicId);
   expect(m.topicLocked).toBe(true);
+});
+
+test('지구본: 쓰기 칸의 주제 칩을 누르면 빠지고, 칩 없이 저장한 메모는 주제 고정이 아니다', async ({ page }) => {
+  await page.goto('/?demo=1&reset=1&write=0');
+  await expect(page.getByTestId('board-info')).toHaveAttribute('data-cards', '40');
+  await expect(page.getByTestId('board')).toHaveAttribute('data-mode', 'focus');
+  await page.getByTestId('plus-button').click();
+  await expect(page.getByTestId('composer-topic-chip')).toBeVisible();
+  await page.getByTestId('composer-topic-chip').click();
+  await expect(page.getByTestId('composer-topic')).toHaveCount(0);
+  await page.getByTestId('globe-composer-input').fill('전혀 상관없는 주말 등산 계획');
+  await page.getByTestId('globe-send').click();
+  await expect(page.getByTestId('globe-composer')).toHaveCount(0);
+  await expect(page.getByTestId('board-info')).toHaveAttribute('data-cards', '41', { timeout: 10_000 });
+  const m = await page.evaluate(async () => {
+    const { db } = (window as unknown as { __kk: { db: { memos: { toArray(): Promise<{ text: string; topicLocked?: boolean }[]> } } } }).__kk;
+    return (await db.memos.toArray()).find((x) => x.text.startsWith('전혀 상관없는 주말'))!;
+  });
+  expect(m.topicLocked).toBeFalsy();
+});
+
+test('지구본: 하늘 상태에서 아래 +를 누르면 주제 칩 없는 쓰기 칸이 열린다', async ({ page }) => {
+  await page.goto('/?demo=1&reset=1&write=0');
+  await expect(page.getByTestId('board-info')).toHaveAttribute('data-cards', '40');
+  const board = page.getByTestId('board');
+  await expect(board).toHaveAttribute('data-mode', 'focus');
+  const spot = await emptySpot(page);
+  expect(spot).not.toBeNull();
+  await page.mouse.click(spot!.x, spot!.y);
+  await expect(board).toHaveAttribute('data-mode', 'sky');
+  await page.getByTestId('plus-button').click();
+  await expect(page.getByTestId('globe-composer')).toBeVisible();
+  await expect(page.getByTestId('composer-topic')).toHaveCount(0);
 });
 
 test('지구본: 주제 없이 열린 쓰기 칸은 마지막으로 읽던(정면에 멈춘) 주제 색, 다시 켜도 기억한다', async ({ page }) => {
@@ -325,7 +359,7 @@ test('지구본: 열기와 닫기는 대칭 — 하늘에서 주제를 누르면
 
 const emptySpot = (page: Page) =>
   page.evaluate(() => {
-    const rects = [...document.querySelectorAll('.g-tag, .g-card, [data-more], [data-testid="topic-plus"], [data-testid="plus-button"]')].map((el) => el.getBoundingClientRect());
+    const rects = [...document.querySelectorAll('.g-tag, .g-card, [data-more], [data-testid="plus-button"]')].map((el) => el.getBoundingClientRect());
     for (let y = 60; y < innerHeight - 60; y += 15)
       for (let x = 30; x < innerWidth - 30; x += 15) {
         const far = rects.every((r) => Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom)) > 24);
@@ -361,6 +395,10 @@ test('지구본: 아래 가운데 + 탭은 주제 없는 쓰기 창, 저장하�
   await expect(page.getByTestId('board-info')).toHaveAttribute('data-cards', '40');
   const board = page.getByTestId('board');
   await expect(board).toHaveAttribute('data-settled', '1');
+  // 하늘 상태에서 + = 주제 없음(집중 상태는 펼친 주제 칩, D33)
+  const spot = await emptySpot(page);
+  await page.mouse.click(spot!.x, spot!.y);
+  await expect(board).toHaveAttribute('data-mode', 'sky');
   const mode = await board.getAttribute('data-mode');
   const plus = page.getByTestId('plus-button');
   const b = (await plus.boundingBox())!;

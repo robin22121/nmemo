@@ -10,7 +10,7 @@ import { motionBus } from '../../motion/bus';
 import { arcKeyframes, FLIGHT_SECONDS } from '../../motion/presets';
 import { getQueue } from '../../organize/runtime';
 import { usePending } from '../hooks';
-import { MovedIcon, PlusIcon } from '../icons';
+import { MovedIcon } from '../icons';
 import { CardFace, cardText, cardTilt } from '../MemoCard';
 import { useBoardData } from '../useBoardData';
 import { GlobeComposer } from './Composer';
@@ -527,17 +527,6 @@ export function GlobeBoard({
             )}
             <div className="g-tag" ref={reg(c.topic.id, 'tag')} data-topic-label>
               {c.topic.name}
-              {/* 펼친(정가운데) 주제에만 보인다. 누르면 이 자리에서 쓰기 칸이 커지며 열리고, 쓴 메모는 이 주제에 붙는다 */}
-              <button
-                type="button"
-                className="g-tag-plus"
-                data-no-pan
-                data-testid="topic-plus"
-                aria-label={`${c.topic.name}에 메모 쓰기`}
-                onClick={(e) => openComposer(e.currentTarget, c.topic.id)}
-              >
-                <PlusIcon />
-              </button>
             </div>
           </div>
         ))}
@@ -621,7 +610,7 @@ export function GlobeBoard({
           probe={() => ({ root: rootRef.current, engine: engine.current?.size })}
           tint={topics.find((t) => t.id === lastTopic)?.color}
           notify={notify}
-          onWrite={(el) => openComposer(el, null)}
+          onWrite={(el) => openComposer(el, engine.current?.isFocus ? rootRef.current?.dataset.front ?? null : null)}
         />
       )}
       {ready && memos.length === 0 && <div className="empty-hint">떠오르는 걸 아무렇게나 던져보세요</div>}
