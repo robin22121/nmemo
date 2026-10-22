@@ -22,6 +22,8 @@ export interface BoardProps {
   onMoveToTopic: (memoId: string, topicId: string) => void;
   /** 빈 곳에 놓음 → 새 주제 만들기 확인 */
   onMoveToNew: (memoId: string) => void;
+  /** 알림(지구본 보드의 쓰기 칸이 씀) */
+  notify?: (message: string) => void;
 }
 
 /** 무리 상세에서 카드가 펼쳐지는 배수 */
@@ -119,7 +121,7 @@ function FlightCard({ flight, onLand }: { flight: Flight; onLand: (f: Flight) =>
 
 /** `?globe=1`이면 지구본 보드 프로토타입, 아니면 기존 평면 보드 */
 export function Board(props: BoardProps) {
-  return GLOBE_ON ? <GlobeBoard onSelectMemo={props.onSelectMemo} /> : <FlatBoard {...props} />;
+  return GLOBE_ON ? <GlobeBoard onSelectMemo={props.onSelectMemo} notify={props.notify ?? (() => {})} /> : <FlatBoard {...props} />;
 }
 
 function FlatBoard({ selectedMemoId, openClusterId, onSelectMemo, onOpenCluster, onMoveToTopic, onMoveToNew }: BoardProps) {

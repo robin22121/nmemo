@@ -15,7 +15,7 @@ const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
 async function run(browser, mode) {
   const ctx = await browser.newContext({ viewport: { width: 375, height: 812 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true, serviceWorkers: 'block' });
   const page = await ctx.newPage();
-  const q = `?demo=big&globe=1${mode === 'write' ? '&write=1' : ''}`;
+  const q = `?demo=big&globe=1&write=${mode === 'write' ? '1' : '0'}`;
   await page.goto(base + '/' + q);
   await page.waitForSelector('[data-testid=board-info][data-cards="200"]', { state: 'attached', timeout: 30000 });
   await page.waitForFunction(() => document.querySelector('[data-testid=board]')?.dataset.phi, null, { timeout: 10000 });

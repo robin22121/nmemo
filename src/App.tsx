@@ -16,6 +16,7 @@ import { NewTopicDialog } from './ui/NewTopicDialog';
 import { PendingTray } from './ui/PendingTray';
 import { Toast, type ToastState } from './ui/Toast';
 import { usePending } from './ui/hooks';
+import { GLOBE_ON } from './ui/globe/config';
 import './ui/input.css';
 import './ui/sheet.css';
 
@@ -131,6 +132,7 @@ export function App() {
             })
           }
           onMoveToNew={(memoId) => setNewTopicFor(memoId)}
+          notify={notify}
         />
         <ClusterBar
           topic={cluster ?? null}
@@ -144,10 +146,13 @@ export function App() {
             void renameTopic(openCluster, name).then(wake);
           }}
         />
-        <div className="dock">
-          <PendingTray memos={pending} onRetry={(id) => void getQueue().retry(id)} />
-          <InputBar notify={notify} onSaved={wake} />
-        </div>
+        {/* 지구본 보드(?globe=1)는 아래 입력 바 대신 쓰기 칸·대기 칩을 직접 그린다 */}
+        {!GLOBE_ON && (
+          <div className="dock">
+            <PendingTray memos={pending} onRetry={(id) => void getQueue().retry(id)} />
+            <InputBar notify={notify} onSaved={wake} />
+          </div>
+        )}
         <MemoSheet memoId={selected} onClose={() => setSelected(null)} onSelect={(id) => void selectMemo(id)} notify={notify} />
         <NewTopicDialog
           open={newTopicFor !== null}

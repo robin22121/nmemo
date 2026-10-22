@@ -30,6 +30,8 @@ export interface EngineOptions {
   /** 짧게 눌렀다 뗌. (x, y)는 화면 좌표 */
   onTap: (target: Element, x: number, y: number) => void;
   shouldIgnore: (target: Element) => boolean;
+  /** 회전·전환이 멈췄을 때(정가운데 주제 id) */
+  onSettle?: (frontId: string | null) => void;
 }
 
 type Lod = 'open' | 'dots' | 'label';
@@ -213,12 +215,16 @@ export class GlobeEngine {
       if (Math.abs(this[k] - tk) < 0.002) this[k] = tk;
       else busy = true;
     }
+    const became = !busy && !this.settled;
     this.settled = !busy;
     this.render();
     if (busy) {
       this.root.dataset.moving = '1';
       this.raf = requestAnimationFrame(this.frame);
-    } else delete this.root.dataset.moving;
+    } else {
+      delete this.root.dataset.moving;
+      if (became) this.opts.onSettle?.(this.root.dataset.front || null);
+    }
   };
 
   private render() {

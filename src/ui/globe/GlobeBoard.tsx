@@ -1,12 +1,17 @@
-import { useReducedMotion } from 'framer-motion';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GLOBE, pickShown, placeTopics, ringCapacity, ringLayout, type RingBox } from '../../core/layout/globe';
 import { setDone } from '../../db/repo';
 import type { Memo, Topic } from '../../db/schema';
-import { CardFace, cardTilt } from '../MemoCard';
+import { motionBus } from '../../motion/bus';
+import { arcKeyframes, FLIGHT_SECONDS } from '../../motion/presets';
+import { getQueue } from '../../organize/runtime';
+import { usePending } from '../hooks';
+import { PenIcon } from '../icons';
+import { CardFace, cardText, cardTilt } from '../MemoCard';
 import { useBoardData } from '../useBoardData';
 import { GlobeComposer } from './Composer';
-import { MOTION, WRITE_MOCK } from './config';
+import { MOTION, WRITE_START } from './config';
 import { TopicListSheet } from './TopicListSheet';
 import { GlobeEngine, type GlobeItem } from './engine';
 import './globe.css';
@@ -25,11 +30,35 @@ interface Cluster {
   count: number;
 }
 
-/** 이름표를 화면 정가운데 둘 때 카드가 들어갈 화면 안 범위(입력 바 위까지) */
+/** 이름표를 화면 정가운데 둘 때 카드가 들어갈 화면 안 범위(아래 "새로 쓰기" 버튼 위까지) */
 function ringBox(): RingBox {
   const w = window.innerWidth, h = window.innerHeight;
-  const dockTop = document.querySelector('.dock')?.getBoundingClientRect().top ?? h - 110;
-  return { left: -w / 2 + 8, right: w / 2 - 8, top: -h / 2 + MOTION.topPad, bottom: dockTop - MOTION.bottomPad - h / 2 };
+  return { left: -w / 2 + 8, right: w / 2 - 8, top: -h / 2 + MOTION.topPad, bottom: h / 2 - MOTION.bottomPad };
+}
+
+/** 정돈된 메모: 쓰기 칸 자리(대기 칩)에서 제 주제의 고리 칸으로 포물선 비행 */
+interface Flight { id: string; memo: Memo; from: { x: number; y: number }; to: { x: number; y: number }; scale: number }
+
+function FlightCard({ f, onLand }: { f: Flight; onLand: (f: Flight) => void }) {
+  const kf = arcKeyframes(f.from, f.to, 150, 0.42);
+  return (
+    <motion.div
+      className="flight-card"
+      data-testid="flight-card"
+      initial={{ x: f.from.x, y: f.from.y, scale: 0.9 }}
+      animate={{ x: kf.x, y: kf.y, scale: [0.9, 1.1, f.scale] }}
+      transition={{
+        x: { duration: FLIGHT_SECONDS, times: kf.times, ease: 'easeInOut' },
+        y: { duration: FLIGHT_SECONDS, times: kf.times, ease: ['easeOut', 'easeIn'] },
+        scale: { duration: FLIGHT_SECONDS, times: kf.times, ease: 'easeInOut' },
+      }}
+      onAnimationComplete={() => onLand(f)}
+    >
+      <div className="card" style={{ transform: `translate(-50%, -50%) rotate(${cardTilt(f.memo)}deg)` }}>
+        <CardFace memo={f.memo} />
+      </div>
+    </motion.div>
+  );
 }
 
 /**
@@ -37,7 +66,7 @@ function ringBox(): RingBox {
  * 좌우로 돌리면 시선 높이가 다가오는 주제를 따라간다. 정가운데 가까운 주제일수록 이름표 둘레로 카드가 연속으로 펼쳐진다.
  * 회전은 GlobeEngine이 DOM에 직접 쓰고, React는 데이터·화면 크기가 바뀔 때만 다시 그린다.
  */
-export function GlobeBoard({ onSelectMemo }: { onSelectMemo: (memoId: string | null) => void }) {
+export function GlobeBoard({ onSelectMemo, notify }: { onSelectMemo: (memoId: string | null) => void; notify: (m: string) => void }) {
   const { topics, memos, links, layout, ready } = useBoardData();
   const reduced = !!useReducedMotion();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -45,7 +74,15 @@ export function GlobeBoard({ onSelectMemo }: { onSelectMemo: (memoId: string | n
   const els = useRef(new Map<string, { el: HTMLElement | null; tag: HTMLElement | null }>());
   const cardEls = useRef(new Map<string, HTMLElement | null>());
   const [box, setBox] = useState<RingBox>(() => ringBox());
-  const [writing, setWriting] = useState(WRITE_MOCK);
+  const [writing, setWriting] = useState(WRITE_START);
+  const [draft, setDraft] = useState('');
+  const pending = usePending();
+  // 정돈되어 날아올 메모: 제 칸에서는 숨겨 두었다가 비행이 끝나면 보인다
+  const [incoming, setIncoming] = useState<Map<string, { topicId: string; from: { x: number; y: number } | null; at: number }>>(new Map());
+  const [flights, setFlights] = useState<Flight[]>([]);
+  const incomingRef = useRef(incoming);
+  incomingRef.current = incoming;
+  const rotateTimer = useRef(0);
   const [listTopic, setListTopic] = useState<string | null>(null);
   const select = useRef(onSelectMemo);
   select.current = onSelectMemo;
@@ -116,6 +153,7 @@ export function GlobeBoard({ onSelectMemo }: { onSelectMemo: (memoId: string | n
         select.current(null);
         e.setFocus(!focus);
       },
+      onSettle: (front) => settled.current(front),
     });
     engine.current = e;
     return () => {
@@ -144,6 +182,94 @@ export function GlobeBoard({ onSelectMemo }: { onSelectMemo: (memoId: string | n
     engine.current?.setMode({ write: writing, reduced });
   }, [writing, reduced]);
 
+  // 백그라운드에 5분 넘게 있다 돌아오면 다시 쓰기 모드
+  useEffect(() => {
+    let hiddenAt = 0;
+    const on = () => {
+      if (document.visibilityState === 'hidden') hiddenAt = Date.now();
+      else if (hiddenAt && Date.now() - hiddenAt >= MOTION.writeAgainAfter) setWriting(true);
+    };
+    document.addEventListener('visibilitychange', on);
+    return () => document.removeEventListener('visibilitychange', on);
+  }, []);
+
+  // 대기열이 메모를 정돈하면(App이 departure를 보냄) 날아올 메모로 등록. 출발점은 대기 칩(쓰기 칸이 있던 자리)
+  useEffect(
+    () =>
+      motionBus.subscribe((m) => {
+        if (m.type !== 'departure') return;
+        const d = m.departure;
+        setIncoming((cur) => new Map(cur).set(d.memoId, { topicId: d.topicId, from: d.from, at: Date.now() }));
+      }),
+    [],
+  );
+
+  const reveal = useCallback((ids: string[]) => {
+    if (!ids.length) return;
+    setIncoming((cur) => {
+      const n = new Map(cur);
+      for (const id of ids) n.delete(id);
+      return n;
+    });
+  }, []);
+
+  // 날아올 메모가 배치에 들어오면 그 주제로 돈다. 연달아 들어오면 마지막 주제로 한 번만(mergeRotateMs)
+  useEffect(() => {
+    const placed = [...incoming.entries()].filter(([id]) => cardEls.current.get(id));
+    if (!placed.length) return;
+    window.clearTimeout(rotateTimer.current);
+    rotateTimer.current = window.setTimeout(() => {
+      const last = placed.reduce((b, x) => (x[1].at > b[1].at ? x : b));
+      if (reduced) reveal(placed.map(([id]) => id));
+      engine.current?.focusTo(last[1].topicId);
+    }, MOTION.mergeRotateMs);
+    // 6초 안에 못 날면 그냥 보인다(유실 방지)
+    const t = window.setTimeout(() => reveal(placed.map(([id]) => id)), 6000);
+    return () => window.clearTimeout(t);
+  }, [incoming, clusters, reduced, reveal]);
+
+  // 회전이 멈추면: 정가운데 주제로 들어올 메모는 대기 칩 자리에서 제 칸으로 날고, 다른 주제 것은 그냥 보인다
+  const settled = useRef<(front: string | null) => void>(() => {});
+  settled.current = (front) => {
+    const ready = [...incomingRef.current.entries()].filter(([id]) => cardEls.current.get(id));
+    if (!ready.length || reduced) return;
+    const fly: Flight[] = [];
+    const show: string[] = [];
+    for (const [id, v] of ready) {
+      if (flights.some((f) => f.id === id)) continue;
+      const el = cardEls.current.get(id)!;
+      const memo = memos.find((m) => m.id === id);
+      if (v.topicId !== front || !memo) {
+        show.push(id);
+        continue;
+      }
+      const r = el.getBoundingClientRect();
+      const sc = Number(/scale\(([\d.]+)\)/.exec(el.style.transform)?.[1] ?? 1);
+      fly.push({ id, memo, from: v.from ?? { x: window.innerWidth / 2, y: 90 }, to: { x: r.left + r.width / 2, y: r.top + r.height / 2 }, scale: sc });
+    }
+    reveal(show);
+    if (fly.length) setFlights((cur) => [...cur, ...fly]);
+  };
+
+  const onLand = useCallback(
+    (f: Flight) => {
+      setFlights((cur) => cur.filter((x) => x.id !== f.id));
+      reveal([f.id]);
+      // 착지 팝: 살짝 부풀었다 돌아온다
+      const card = cardEls.current.get(f.id)?.querySelector<HTMLElement>('.card');
+      if (card) {
+        const base = card.style.transform;
+        card.animate([{ transform: `${base} scale(1.18)` }, { transform: base }], { duration: 380, easing: 'cubic-bezier(.2,1.5,.4,1)' });
+      }
+    },
+    [reveal],
+  );
+
+  const closeComposer = (saved: boolean) => {
+    setWriting(false);
+    if (saved) engine.current?.setFocus(true);
+  };
+
   const reg = (id: string, key: 'el' | 'tag') => (node: HTMLElement | null) => {
     const r = els.current.get(id) ?? { el: null, tag: null };
     r[key] = node;
@@ -166,7 +292,7 @@ export function GlobeBoard({ onSelectMemo }: { onSelectMemo: (memoId: string | n
           <div key={c.topic.id} className="g-cluster" data-topic-id={c.topic.id} ref={reg(c.topic.id, 'el')} style={{ ['--c' as string]: c.topic.color }}>
             <div className="g-glow" />
             {c.cards.map(({ memo, dx, dy }) => (
-              <div key={memo.id} className="g-card" data-memo-id={memo.id} ref={regCard(memo.id)} style={{ transform: `translate3d(${dx}px, ${dy}px, 0)` }}>
+              <div key={memo.id} className={`g-card${incoming.has(memo.id) && !reduced ? ' g-incoming' : ''}`} data-memo-id={memo.id} ref={regCard(memo.id)} style={{ transform: `translate3d(${dx}px, ${dy}px, 0)` }}>
                 <div className="card" style={{ transform: `translate(-50%, -50%) rotate(${cardTilt(memo)}deg)` }}>
                   <CardFace memo={memo} onToggleDone={(mid, d) => void setDone(mid, d)} />
                 </div>
@@ -196,10 +322,33 @@ export function GlobeBoard({ onSelectMemo }: { onSelectMemo: (memoId: string | n
           select.current(id);
         }}
       />
-      {writing && <GlobeComposer onDismiss={() => setWriting(false)} />}
-      {WRITE_MOCK && !writing && (
-        <button type="button" className="g-pen" data-no-pan onClick={() => setWriting(true)}>
-          새로 쓰기
+      <div className="g-flights" aria-hidden>
+        {flights.map((f) => (
+          <FlightCard key={f.id} f={f} onLand={onLand} />
+        ))}
+      </div>
+      {!writing && pending.length > 0 && (
+        <div className="g-pending" data-no-pan>
+          {pending.map((m) => (
+            <button
+              type="button"
+              key={m.id}
+              className={`g-pchip${m.status === 'failed' ? ' failed' : ''}`}
+              data-testid="pending-card"
+              data-pending-id={m.id}
+              onClick={m.status === 'failed' ? () => void getQueue().retry(m.id) : undefined}
+            >
+              {m.status === 'failed' ? '다시 시도 · ' : ''}
+              {cardText(m)}
+            </button>
+          ))}
+        </div>
+      )}
+      {writing ? (
+        <GlobeComposer draft={draft} onDraft={setDraft} notify={notify} onSaved={() => closeComposer(true)} onDismiss={() => closeComposer(false)} />
+      ) : (
+        <button type="button" className="g-pen" data-no-pan data-testid="globe-write" onClick={() => setWriting(true)}>
+          <PenIcon /> 새로 쓰기
         </button>
       )}
       {ready && memos.length === 0 && <div className="empty-hint">떠오르는 걸 아무렇게나 던져보세요</div>}

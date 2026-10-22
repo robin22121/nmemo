@@ -62,16 +62,44 @@
 .g-board .face.emotion .face-text { font-size: 12px; -webkit-line-clamp: 3; line-clamp: 3; }
 .g-board .face.photo .face-text, .g-board .face.todo .face-text { font-size: 14px; }
 
-/* 바로 쓰기 목업 */
+/* 바로 쓰기: 흐린 지구본 앞 큰 쓰기 칸 */
 .g-dim { position: fixed; inset: 0; z-index: 44; background: rgba(246, 241, 231, 0.5); }
 .g-composer {
   position: fixed; left: 14px; right: 14px; top: calc(18px + env(safe-area-inset-top, 0px)); z-index: 45;
   display: flex; flex-direction: column; border-radius: 22px; background: #fffdf7; box-shadow: var(--shadow-lift); border: 1px solid var(--line);
 }
-.g-composer textarea { min-height: 38vh; resize: none; border: 0; outline: none; background: transparent; padding: 18px 18px 8px; font-size: 18px; line-height: 1.5; }
-.g-composer-bar { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px 10px 18px; font-size: 12px; color: var(--ink-soft); }
+.g-composer-field { position: relative; }
+.g-composer textarea { display: block; width: 100%; min-height: 38vh; resize: none; border: 0; outline: none; background: transparent; padding: 18px 18px 8px; font-size: 18px; line-height: 1.5; }
+.g-fake { position: absolute; left: 18px; top: 18px; font-size: 18px; line-height: 1.5; color: var(--ink-soft); pointer-events: none; display: flex; align-items: center; gap: 2px; }
+.g-caret { display: inline-block; width: 2px; height: 1.2em; background: #5b7cfa; animation: g-blink 1.05s steps(1) infinite; }
+@keyframes g-blink { 50% { opacity: 0; } }
+.g-listen { position: absolute; left: 12px; right: 12px; bottom: 6px; padding: 8px 12px; border-radius: 12px; background: var(--paper-2); font-size: 14px; display: flex; gap: 8px; align-items: center; }
+.g-composer-bar { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px 10px 10px; }
+.g-plus-wrap { display: flex; align-items: center; gap: 8px; }
 .g-plus { width: 42px; height: 42px; border-radius: 50%; background: var(--postit); font-size: 24px; line-height: 1; box-shadow: var(--shadow); }
+.g-choice { display: inline-flex; align-items: center; gap: 6px; height: 42px; padding: 0 14px; border-radius: 999px; background: var(--paper-2); font-size: 15px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.g-choice svg { width: 18px; height: 18px; }
+.g-send { width: 42px; height: 42px; border-radius: 50%; background: var(--ink); color: #fffdf7; display: grid; place-items: center; }
+.g-send:disabled { opacity: 0.3; }
+.g-send svg { width: 20px; height: 20px; }
 .g-pen {
-  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(160px + var(--safe-b)); z-index: 3;
-  padding: 10px 20px; border-radius: 999px; background: var(--ink); color: #fffdf7; font-size: 15px; box-shadow: var(--shadow-lift);
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(16px + var(--safe-b)); z-index: 3;
+  display: inline-flex; align-items: center; gap: 6px; padding: 11px 20px; border-radius: 999px;
+  background: var(--ink); color: #fffdf7; font-size: 15px; box-shadow: var(--shadow-lift);
+}
+.g-pen svg { width: 18px; height: 18px; }
+
+/* 정돈 대기 칩(쓰기 칸이 있던 위쪽 가운데) → 정돈되면 여기서 제 주제로 날아간다 */
+.g-pending { position: absolute; left: 0; right: 0; top: calc(14px + env(safe-area-inset-top, 0px)); z-index: 4; display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; padding: 0 16px; pointer-events: none; }
+.g-pchip {
+  pointer-events: auto; max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 6px 12px; border-radius: 12px;
+  border: 1.5px dashed rgba(58, 50, 38, 0.4); background: rgba(238, 233, 223, 0.94); color: var(--ink-soft); font-size: 13px;
+  animation: g-breath 2.4s ease-in-out infinite;
+}
+.g-pchip.failed { border-color: #c4564a; color: #a04238; animation: none; }
+@keyframes g-breath { 50% { transform: scale(1.04); } }
+.g-flights { position: fixed; inset: 0; pointer-events: none; z-index: 20; overflow: hidden; }
+.g-card.g-incoming { visibility: hidden; }
+@media (prefers-reduced-motion: reduce) {
+  .g-caret, .g-pchip { animation: none; }
 }

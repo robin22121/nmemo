@@ -17,7 +17,7 @@ npm run dev          # http://localhost:5173  (/api/* 도 같은 서버에서 �
 
 - `?demo=1` — 샘플 메모 40개(6개 주제)로 시작하는 데모 DB(`kkeujeogim-demo`). `?demo=1&reset=1`이면 데모 DB를 비우고 다시 채웁니다.
 - `?demo=big` — 성능 측정용 큰 데모(주제 15개·메모 200개, 따로 된 DB `kkeujeogim-demo-big`).
-- `?globe=1` — 지구본(천구) 보드 프로토타입(`src/ui/globe/`). 좌우로 돌리면 시선 높이가 주제를 따라가고, 정가운데 가까운 주제가 연속으로 펼쳐진다. `&write=1`이면 흐린 지구본 위 쓰기 칸 목업. 프레임 측정: 개발 서버를 띄운 뒤 `node scripts/perf-globe.mjs [URL]`.
+- `?globe=1` — 지구본(천구) 보드 프로토타입(`src/ui/globe/`). 좌우로 돌리면 시선 높이가 주제를 따라가고, 정가운데 가까운 주제가 연속으로 펼쳐진다. 켜면 쓰기 모드(흐린 지구본 앞 큰 쓰기 칸, + → 녹음·사진, 저장하면 정돈된 주제로 돌아 날아가 붙음). `&write=0`이면 바로 보드. 프레임 측정: 개발 서버를 띄운 뒤 `node scripts/perf-globe.mjs [URL]`.
   데모 모드에서는 개발·e2e용으로 `window.__kk = { db, queue }`가 노출됩니다.
 - 모바일에서 열면 홈 화면에 추가(PWA)할 수 있고, 오프라인에서도 열립니다.
 
