@@ -22,11 +22,30 @@ function download(file: File) {
   window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
+/** 진단: 홈 화면 앱에서 크기를 0으로 잰 문제(U1)를 눈으로 확인하려고 둔 한 줄 */
+function diagLine(probe: Probe): string {
+  const nav = navigator as Navigator & { standalone?: boolean };
+  const standalone = nav.standalone === true || window.matchMedia?.('(display-mode: standalone)').matches;
+  const r = probe();
+  const vv = window.visualViewport;
+  const e = r.engine;
+  return [
+    `빌드 ${__BUILD_ID__}`,
+    standalone ? 'standalone' : 'browser',
+    `보드 ${r.root?.clientWidth ?? '?'}×${r.root?.clientHeight ?? '?'}`,
+    `창 ${window.innerWidth}×${window.innerHeight}`,
+    `뷰포트 ${vv ? `${Math.round(vv.width)}×${Math.round(vv.height)}` : '?'}`,
+    `엔진 ${e ? `${e.w}×${e.h}` : '?'}`,
+  ].join(' · ');
+}
+
+type Probe = () => { root: HTMLElement | null; engine?: { w: number; h: number } };
+
 /**
  * 지구본 왼쪽 위 "⋯" → 메뉴(Z4): 내보내기(크기 표시, "사진 빼고"), 가져오기(합치기), 최근 7일 정돈 기록(Z5).
  * 내보낼 파일은 메뉴를 열 때 미리 만들어 둔다 → 누르는 즉시 share를 불러 iOS의 사용자 동작 제한에 걸리지 않게.
  */
-export function GlobeMenu({ tint, notify }: { tint?: string; notify: (m: string) => void }) {
+export function GlobeMenu({ tint, notify, probe }: { tint?: string; notify: (m: string) => void; probe: Probe }) {
   const [open, setOpen] = useState(false);
   const [withPhotos, setWithPhotos] = useState(true);
   const [file, setFile] = useState<File | null>(null);
@@ -134,6 +153,7 @@ export function GlobeMenu({ tint, notify }: { tint?: string; notify: (m: string)
             </label>
             <p className="g-menu-note">내보낸 파일을 메신저로 옮기면 메모 전문이 그 회사 서버를 거쳐요.</p>
             <p className="g-menu-stats" data-testid="menu-stats">{statLine}</p>
+            <p className="g-menu-diag" data-testid="menu-diag">{diagLine(probe)}</p>
           </div>
         </>
       )}

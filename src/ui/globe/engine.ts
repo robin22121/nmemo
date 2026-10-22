@@ -41,6 +41,28 @@ export interface EngineOptions {
 
 type Lod = 'open' | 'dots' | 'label';
 
+/** 0·NaN·undefined을 건너뛰고 처음 나오는 양수 */
+function firstPositive(...vals: (number | undefined)[]): number {
+  for (const v of vals) if (v && v > 0 && Number.isFinite(v)) return v;
+  return 0;
+}
+
+/**
+ * 보드 크기 측정. iOS 홈 화면 앱은 콜드 스타트에서 clientWidth·innerWidth까지 0을 줄 때가 있어 여러 값을 차례로 본다.
+ * 모두 0이면 0을 돌려준다(저장하지 말고 다시 잰다).
+ */
+export function measureBoard(root: HTMLElement): { w: number; h: number } {
+  const r = root.getBoundingClientRect?.();
+  const vv = typeof window === 'undefined' ? undefined : window.visualViewport;
+  return {
+    w: firstPositive(root.clientWidth, r?.width, vv?.width, typeof window === 'undefined' ? 0 : window.innerWidth),
+    h: firstPositive(root.clientHeight, r?.height, vv?.height, typeof window === 'undefined' ? 0 : window.innerHeight),
+  };
+}
+
+/** 크기 0 측정 뒤 다시 재는 최대 프레임 수 */
+const MEASURE_RETRIES = 60;
+
 /** 접힌 점에서 펼친 칸으로 갈 때 카드 크기(펼침 0 근처) */
 const DOT_CARD = 0.16;
 
@@ -70,6 +92,7 @@ export class GlobeEngine {
   private w = 0;
   private h = 0;
   private raf = 0;
+  private measureRaf = 0;
   private last = 0;
   private settled = false;
   private wheelTimer = 0;
@@ -83,13 +106,25 @@ export class GlobeEngine {
 
   destroy() {
     cancelAnimationFrame(this.raf);
+    cancelAnimationFrame(this.measureRaf);
     window.clearTimeout(this.wheelTimer);
     this.off();
   }
 
-  resize() {
-    const w = this.root.clientWidth || window.innerWidth;
-    const h = this.root.clientHeight || window.innerHeight;
+  /** 엔진이 마지막으로 받아들인 보드 크기(0이면 아직 못 잼) */
+  get size() {
+    return { w: this.w, h: this.h };
+  }
+
+  resize(retry = 0) {
+    cancelAnimationFrame(this.measureRaf);
+    this.measureRaf = 0;
+    const { w, h } = measureBoard(this.root);
+    if (!w || !h) {
+      // 0은 저장하지 않는다(0/0=NaN → transform이 버려져 모든 무리가 왼쪽 위에 쌓인다). resize 이벤트가 안 올 수 있어 직접 다시 잰다
+      if (retry < MEASURE_RETRIES) this.measureRaf = requestAnimationFrame(() => this.resize(retry + 1));
+      return;
+    }
     if (w === this.w && h === this.h) return;
     this.w = w;
     this.h = h;
@@ -238,6 +273,7 @@ export class GlobeEngine {
   };
 
   private render() {
+    if (!this.w || !this.h) return; // 크기를 못 쟀으면 그리지 않는다(NaN 방지)
     this.theta = pitchAt(this.phi, this.items);
     const vp = { ...globeViewport(this.w, this.h, this.zoom), cy: this.h * this.cy };
     const fv = { cx: vp.cx, cy: vp.cy, width: this.w, height: this.h };
@@ -409,6 +445,9 @@ export class GlobeEngine {
     const noGesture = (e: Event) => e.preventDefault();
     const noMenu = (e: Event) => e.preventDefault();
     const onResize = () => this.resize();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') this.resize();
+    };
     el.addEventListener('pointerdown', down);
     el.addEventListener('pointermove', move);
     el.addEventListener('pointerup', up);
@@ -417,6 +456,9 @@ export class GlobeEngine {
     el.addEventListener('contextmenu', noMenu);
     document.addEventListener('gesturestart', noGesture);
     window.addEventListener('resize', onResize);
+    window.addEventListener('pageshow', onResize);
+    document.addEventListener('visibilitychange', onVisible);
+    window.visualViewport?.addEventListener('resize', onResize);
     // 인앱 브라우저는 처음 폭을 넓게 알렸다가 resize 이벤트 없이 줄이기도 한다 → 보드 크기를 직접 지켜본다(중심 쏠림 방지)
     const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(onResize);
     ro?.observe(el);
@@ -431,6 +473,9 @@ export class GlobeEngine {
       el.removeEventListener('contextmenu', noMenu);
       document.removeEventListener('gesturestart', noGesture);
       window.removeEventListener('resize', onResize);
+      window.removeEventListener('pageshow', onResize);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.visualViewport?.removeEventListener('resize', onResize);
     };
   }
 }

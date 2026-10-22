@@ -1,7 +1,17 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { execSync } from 'node:child_process';
 import { kkeujeogimApi } from './server/devMiddleware';
+
+/** 빌드 식별자: git 짧은 커밋 → Vercel 커밋 → dev */
+function buildId(): string {
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() || 'dev';
+  } catch {
+    return process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) || 'dev';
+  }
+}
 
 export default defineConfig(({ mode }) => ({
   // mode 'artifact': claude.ai 아티팩트로 올리는 단일 HTML용 빌드(서비스 워커 없음, 데모 데이터 기본)
@@ -37,5 +47,6 @@ export default defineConfig(({ mode }) => ({
       },
     }),
   ],
+  define: { __BUILD_ID__: JSON.stringify(buildId()) },
   server: { host: true },
 }));

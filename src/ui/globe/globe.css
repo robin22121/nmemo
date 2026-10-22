@@ -232,4 +232,5 @@
 .g-menu-check input { accent-color: color-mix(in srgb, var(--c) 70%, var(--ink)); margin: 0; }
 .g-menu-note { margin: 2px 6px 0; font-size: 12px; line-height: 1.45; color: var(--ink-soft); }
 .g-menu-stats { margin: 4px 6px 2px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 13px; font-weight: 600; color: color-mix(in srgb, var(--c) 30%, var(--ink)); }
+.g-menu-diag { margin: 0 6px 2px; font-size: 11px; line-height: 1.4; color: var(--ink-soft); opacity: 0.7; word-break: keep-all; }
 @media (prefers-reduced-motion: reduce) { .g-menu { animation: none; } }

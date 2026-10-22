@@ -17,7 +17,7 @@ import { GlobeComposer } from './Composer';
 import { GlobeMenu } from './GlobeMenu';
 import { MOTION, WRITE_START } from './config';
 import { TopicListSheet } from './TopicListSheet';
-import { GlobeEngine, type GlobeItem } from './engine';
+import { GlobeEngine, measureBoard, type GlobeItem } from './engine';
 import '../board.css';
 import './globe.css';
 
@@ -36,9 +36,13 @@ interface Cluster {
 }
 
 /** 이름표를 화면 정가운데 둘 때 카드가 들어갈 화면 안 범위(아래 여백 위까지). 보드 크기 기준 */
-function ringBox(el?: HTMLElement | null): RingBox {
-  const w = el?.clientWidth || window.innerWidth, h = el?.clientHeight || window.innerHeight;
+function boxOf(w: number, h: number): RingBox {
   return { left: -w / 2 + 8, right: w / 2 - 8, top: -h / 2 + MOTION.topPad, bottom: h / 2 - MOTION.bottomPad };
+}
+/** 0 측정이면 null: 호출한 쪽이 이전 값을 지킨다 */
+function ringBox(el?: HTMLElement | null): RingBox | null {
+  const { w, h } = el ? measureBoard(el) : { w: window.innerWidth, h: window.innerHeight };
+  return w && h ? boxOf(w, h) : null;
 }
 
 /** 정돈된 메모: 쓰기 칸 자리(대기 칩)에서 제 주제의 고리 칸으로 포물선 비행 */
@@ -132,7 +136,7 @@ export function GlobeBoard({
   const engine = useRef<GlobeEngine | null>(null);
   const els = useRef(new Map<string, { el: HTMLElement | null; tag: HTMLElement | null }>());
   const cardEls = useRef(new Map<string, HTMLElement | null>());
-  const [box, setBox] = useState<RingBox>(() => ringBox());
+  const [box, setBox] = useState<RingBox>(() => ringBox() ?? boxOf(375, 812));
   const [writing, setWriting] = useState(WRITE_START);
   const [draft, setDraft] = useState('');
   // 쓰기 칸을 연 곳: 주제 옆 +면 그 주제, 그리고 열고 닫힐 때의 기준점(누른 버튼 중심)
@@ -166,18 +170,28 @@ export function GlobeBoard({
 
   // 보드 자체 크기를 지켜본다. 인앱 브라우저(카카오톡 등)는 처음에 넓은 폭을 알렸다가 resize 이벤트 없이 줄어들기도 한다
   useEffect(() => {
-    const on = () =>
-      setBox((cur) => {
-        const n = ringBox(rootRef.current);
-        return n.left === cur.left && n.top === cur.top && n.bottom === cur.bottom ? cur : n;
-      });
+    let raf = 0;
+    const on = (tries = 0) => {
+      cancelAnimationFrame(raf);
+      const n = ringBox(rootRef.current);
+      if (!n) {
+        // 0 측정(iOS 홈 화면 앱 콜드 스타트): 이전 값을 지키고 몇 프레임 뒤 다시 잰다
+        if (tries < 60) raf = requestAnimationFrame(() => on(tries + 1));
+        return;
+      }
+      setBox((cur) => (n.left === cur.left && n.right === cur.right && n.top === cur.top && n.bottom === cur.bottom ? cur : n));
+    };
+    const onEvent = () => on();
     on();
-    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(on);
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(onEvent);
     if (rootRef.current) ro?.observe(rootRef.current);
-    window.addEventListener('resize', on);
+    window.addEventListener('resize', onEvent);
+    window.visualViewport?.addEventListener('resize', onEvent);
     return () => {
+      cancelAnimationFrame(raf);
       ro?.disconnect();
-      window.removeEventListener('resize', on);
+      window.removeEventListener('resize', onEvent);
+      window.visualViewport?.removeEventListener('resize', onEvent);
     };
   }, []);
 
@@ -599,7 +613,7 @@ export function GlobeBoard({
           />
         )}
       </AnimatePresence>
-      {!writing && !lift && <GlobeMenu tint={topics.find((t) => t.id === lastTopic)?.color} notify={notify} />}
+      {!writing && !lift && <GlobeMenu probe={() => ({ root: rootRef.current, engine: engine.current?.size })} tint={topics.find((t) => t.id === lastTopic)?.color} notify={notify} />}
       {ready && memos.length === 0 && <div className="empty-hint">떠오르는 걸 아무렇게나 던져보세요</div>}
       <span hidden data-testid="board-info" data-clusters={clusters.length} data-cards={memos.length} />
     </div>

@@ -270,6 +270,7 @@ export function topicOpacity(base: number, e: number, f: number): number {
 
 /** 어안 배율: 화면 중심에서 가장 크고(1) 가장자리로 갈수록 작다. (x,y)는 화면 좌표 */
 export function fisheye(x: number, y: number, vp: { cx: number; cy: number; width: number; height: number }): number {
+  if (!(vp.width > 0) || !(vp.height > 0)) return 1; // 크기를 못 잰 상태: 0/0=NaN 방지
   const r = Math.hypot((x - vp.cx) / (vp.width / 2), (y - vp.cy) / (vp.height / 2));
   const t = Math.min(1, r / GLOBE.fisheyeReach);
   return 1 - (1 - GLOBE.fisheyeEdge) * t * t * (3 - 2 * t);
