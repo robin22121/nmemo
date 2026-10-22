@@ -1,65 +1,72 @@
-import { GLOBE, globeViewport, projectGlobe, snapTarget, wrapDeg, type Projection } from '../../core/layout/globe';
+import { fisheye, focusExpansion, globeViewport, GLOBE, pitchAt, projectGlobe, snapYaw, topicOpacity, wrapDeg } from '../../core/layout/globe';
 import { MOTION } from './config';
+
+export interface GlobeCard {
+  el: HTMLElement;
+  /** 펼친 자리(이름표 중심 기준)와 접힌 점 자리 */
+  rx: number;
+  ry: number;
+  dx: number;
+  dy: number;
+}
 
 export interface GlobeItem {
   id: string;
   lambda: number;
   beta: number;
-  /** 회전하는 무리(또는 B안 타일) 컨테이너 */
+  /** 도는 무리 컨테이너(원점 = 이름표 중심) */
   el: HTMLElement;
-  /** A안: 세로 스크롤을 받는 무리 본문과 그 로컬 위·아래 끝(px) */
-  body?: HTMLElement | null;
-  top: number;
-  bottom: number;
-  /** 라벨만 보일 때 역배율로 키우는 이름표 */
-  tag?: HTMLElement | null;
-  /** 라벨만 보일 때 이름표가 화면에서 최소 이 배율로 보이게(A안 이름표 0.85, B안 타일 0.55) */
-  tagFit: number;
-  big: boolean;
-  /** 처음 정면에 둘 후보(가장 큰 주제) */
+  tag: HTMLElement | null;
+  cards: GlobeCard[];
+  /** 펼쳤을 때 카드 크기 */
+  k: number;
+  /** 처음 정가운데 둘 후보(가장 큰 주제) */
   weight: number;
+  /** 펼친 고리가 차지하는 범위(이름표 중심 기준, 엔진이 채운다) */
+  ext?: { l: number; r: number; t: number; b: number };
 }
 
 export interface EngineOptions {
-  onTap: (target: Element) => void;
-  onSettle: (frontId: string | null) => void;
-  onMoveStart: () => void;
-  /** 두 손가락: 오므리면 true(조망), 벌리면 false */
-  onPinch: (zoomOut: boolean) => void;
-  /** B안: 정면 판의 세로 스크롤 대상. 없으면 A안처럼 정면 무리 본문을 스크롤한다 */
-  scrollTarget?: () => { el: HTMLElement; min: number; max: number } | null;
+  /** 짧게 눌렀다 뗌. (x, y)는 화면 좌표 */
+  onTap: (target: Element, x: number, y: number) => void;
   shouldIgnore: (target: Element) => boolean;
 }
 
-type Lod = 'full' | 'summary' | 'dots' | 'label';
+type Lod = 'open' | 'dots' | 'label';
+
+/** 접힌 점에서 펼친 칸으로 갈 때 카드 크기(펼침 0 근처) */
+const DOT_CARD = 0.16;
 
 /**
- * 지구본 회전 엔진. φ·속도는 여기서만 들고, 프레임마다 무리 컨테이너 N개에 transform·opacity·z-index만
- * 직접 쓴다(React 재렌더 없음). 손을 떼면 관성 방향의 가장 가까운 주제로 임계 감쇠 스프링 스냅.
+ * 천구 회전 엔진. 끌기는 좌우만(φ). 시선 높이 θ는 φ에서 정해져(pitchAt) 정면으로 오는 주제의 높이를 따라간다.
+ * 프레임마다 무리 컨테이너 N개에 transform·opacity·z-index를 직접 쓰고(React 재렌더 없음),
+ * 카드 하나하나는 펼쳐진 무리만 쓴다. 크기에는 화면 중심 어안 배율을 곱한다.
+ * 손을 떼면 관성 방향에서 경도가 가장 가까운 주제로 임계 감쇠 스프링 스냅.
  */
 export class GlobeEngine {
   private items: GlobeItem[] = [];
   private phi = NaN;
+  private theta = 0;
   private vel = 0;
   private mode: 'idle' | 'drag' | 'spring' | 'wheel' = 'idle';
   private target = 0;
   private zoom = 1;
   private zoomTarget = 1;
   /** 투영 중심 높이(화면 비율). 쓰기 모드에서는 쓰기 칸 아래로 내린다 */
-  private cy: number = GLOBE.cyFrac;
-  private cyTarget: number = GLOBE.cyFrac;
+  private cy = 0.5;
+  private cyTarget = 0.5;
   private write = false;
   private reduced = false;
+  /** 집중 보기(가운데 주제만 펼침) / 하늘 보기(모두 접힘). f는 그 사이 진행값 */
+  private focus = true;
+  private f = 1;
   private w = 0;
   private h = 0;
   private raf = 0;
   private last = 0;
   private settled = false;
-  private scrollY = 0;
-  private scrollEl: HTMLElement | null = null;
   private wheelTimer = 0;
-  private lods = new WeakMap<HTMLElement, Lod>();
-  private tagScaled = new WeakSet<HTMLElement>();
+  private state = new WeakMap<HTMLElement, { lod?: Lod; e: number; ls: number }>();
   private off: () => void;
 
   constructor(private root: HTMLElement, private opts: EngineOptions) {
@@ -76,26 +83,38 @@ export class GlobeEngine {
   resize() {
     this.w = this.root.clientWidth || window.innerWidth;
     this.h = this.root.clientHeight || window.innerHeight;
+    this.settled = false;
     this.kick();
   }
 
   setItems(items: GlobeItem[]) {
+    for (const it of items) {
+      const hw = (GLOBE.cardW * it.k) / 2, hh = (GLOBE.cardH * it.k) / 2;
+      const xs = it.cards.map((c) => c.rx), ys = it.cards.map((c) => c.ry);
+      it.ext = it.cards.length
+        ? { l: Math.min(...xs) - hw, r: Math.max(...xs) + hw, t: Math.min(...ys) - hh, b: Math.max(...ys) + hh }
+        : { l: -GLOBE.labelW / 2, r: GLOBE.labelW / 2, t: -GLOBE.labelH / 2, b: GLOBE.labelH / 2 };
+    }
     this.items = items;
+    this.state = new WeakMap(); // React가 다시 그린 카드 자리를 모두 다시 쓴다
     if (Number.isNaN(this.phi) && items.length) {
-      // 처음에는 가장 큰 주제를 정면에
+      // 처음에는 가장 큰 주제를 정가운데에
       this.phi = items.reduce((b, it) => (it.weight > b.weight ? it : b)).lambda;
     }
-    if (this.mode === 'idle' && !this.write) this.settled = false;
+    this.settled = false;
     this.kick();
   }
 
-  setMode(m: { write: boolean; overview: boolean; reduced: boolean }) {
+  setMode(m: { write: boolean; reduced: boolean }) {
     const wasWrite = this.write;
     this.write = m.write;
     this.reduced = m.reduced;
-    this.zoomTarget = m.overview ? MOTION.overviewZoom : m.write ? MOTION.writeZoom : 1;
-    this.cyTarget = m.write ? MOTION.writeCy : GLOBE.cyFrac;
+    this.zoomTarget = m.write ? MOTION.writeZoom : 1;
+    this.cyTarget = m.write ? MOTION.writeCy : 0.5;
+    if (m.reduced) this.root.dataset.reduced = '1';
+    else delete this.root.dataset.reduced;
     if (m.reduced) {
+      this.f = this.focus ? 1 : 0;
       this.zoom = this.zoomTarget;
       this.cy = this.cyTarget;
     }
@@ -104,25 +123,38 @@ export class GlobeEngine {
     this.kick();
   }
 
-  /** 그 주제가 정면에 오도록 돌린다 */
+  get isFocus() {
+    return this.focus;
+  }
+
+  /** 집중 ↔ 하늘. 하늘로 가면 카드가 이름표로 빨려 들어가고 다른 주제가 또렷해진다 */
+  setFocus(on: boolean) {
+    this.focus = on;
+    if (this.reduced) this.f = on ? 1 : 0;
+    this.settled = false;
+    this.kick();
+  }
+
+  /** 그 주제를 정가운데로 돌리고 집중 보기로(메모가 이름표에서 터져 나온다) */
+  focusTo(id: string) {
+    this.rotateTo(id);
+    this.setFocus(true);
+  }
+
+  /** 그 주제가 정가운데 오도록 짧은 방향으로 돌린다(높이는 따라온다) */
   rotateTo(id: string) {
     const it = this.items.find((x) => x.id === id);
     if (!it) return;
-    this.opts.onMoveStart();
     this.target = this.phi + wrapDeg(it.lambda - this.phi);
     this.startSpring(0);
   }
 
   // ---------- 물리 ----------
 
-  private lambdas() {
-    return this.items.map((i) => i.lambda);
-  }
-
   private release(v: number) {
     const v0 = Math.max(-MOTION.maxVel, Math.min(MOTION.maxVel, v));
-    this.target = snapTarget(this.phi + v0 * MOTION.inertiaLead, this.lambdas());
-    this.vel = v0;
+    const t = snapYaw(this.phi + v0 * MOTION.inertiaLead, this.items.map((i) => i.lambda));
+    this.target = this.phi + wrapDeg(t - this.phi);
     this.startSpring(v0);
   }
 
@@ -150,9 +182,9 @@ export class GlobeEngine {
     this.last = t;
     let busy = this.mode === 'drag' || this.mode === 'wheel';
     if (this.mode === 'spring') {
+      // 임계 감쇠 스프링을 한 프레임 정확히 푼다(dt가 커도 넘치지 않게)
       const om = MOTION.snapOmega;
       const x = this.phi - this.target;
-      // 임계 감쇠 스프링을 한 프레임 정확히 푼다(dt가 커도 넘치지 않게)
       const e = Math.exp(-om * dt);
       const c = this.vel + om * x;
       this.phi = this.target + (x + c * dt) * e;
@@ -167,232 +199,170 @@ export class GlobeEngine {
       this.phi += MOTION.autorotate * dt;
       busy = true;
     }
-    if (this.zoom !== this.zoomTarget) {
-      this.zoom += (this.zoomTarget - this.zoom) * Math.min(1, dt * 9);
-      if (Math.abs(this.zoom - this.zoomTarget) < 0.003) this.zoom = this.zoomTarget;
+    const ft = this.focus ? 1 : 0;
+    if (this.f !== ft) {
+      // 약 0.4초에 걸쳐 빨려 들어가기/터져 나오기
+      this.f += (ft - this.f) * Math.min(1, dt * 9);
+      if (Math.abs(this.f - ft) < 0.004) this.f = ft;
       else busy = true;
     }
-    if (this.cy !== this.cyTarget) {
-      this.cy += (this.cyTarget - this.cy) * Math.min(1, dt * 9);
-      if (Math.abs(this.cy - this.cyTarget) < 0.001) this.cy = this.cyTarget;
+    for (const k of ['zoom', 'cy'] as const) {
+      const tk = k === 'zoom' ? this.zoomTarget : this.cyTarget;
+      if (this[k] === tk) continue;
+      this[k] += (tk - this[k]) * Math.min(1, dt * 9);
+      if (Math.abs(this[k] - tk) < 0.002) this[k] = tk;
       else busy = true;
     }
-    if (this.scrollY !== 0 && this.mode !== 'idle' && !this.opts.scrollTarget) {
-      // 회전이 시작되면 정면 무리 스크롤을 부드럽게 원위치
-      this.scrollY *= Math.exp(-dt * 12);
-      if (Math.abs(this.scrollY) < 0.5) this.scrollY = 0;
-    }
-    const nowSettled = !busy;
-    const becameSettled = nowSettled && !this.settled;
-    this.settled = nowSettled;
+    this.settled = !busy;
     this.render();
     if (busy) {
       this.root.dataset.moving = '1';
       this.raf = requestAnimationFrame(this.frame);
-    } else {
-      delete this.root.dataset.moving;
-      if (becameSettled) this.opts.onSettle(this.front()?.id ?? null);
-    }
+    } else delete this.root.dataset.moving;
   };
 
-  private front(): GlobeItem | null {
-    let best: GlobeItem | null = null;
-    let bd = Infinity;
-    for (const it of this.items) {
-      const d = Math.abs(wrapDeg(it.lambda - this.phi));
-      if (d < bd) { bd = d; best = it; }
-    }
-    return best;
-  }
-
-  private vp() {
-    return { ...globeViewport(this.w, this.h, this.zoom), cy: this.h * this.cy };
-  }
-
   private render() {
-    const vp = this.vp();
-    const front = this.front();
-    const many = this.items.length >= MOTION.lodTopics;
-    const overview = this.zoomTarget !== 1 && !this.write;
-    for (const it of this.items) {
-      const p = projectGlobe(it.lambda, it.beta, this.phi, vp);
-      let { x, y, scale } = p;
-      const isFront = it === front;
-      if (this.settled && isFront && Math.abs(p.delta) < 1 && this.zoom === 1) {
-        // 멈춘 정면 무리는 정확히 원래 크기·정수 픽셀로 → 글자가 선명하게 다시 그려진다
+    this.theta = pitchAt(this.phi, this.items);
+    const vp = { ...globeViewport(this.w, this.h, this.zoom), cy: this.h * this.cy };
+    const fv = { cx: vp.cx, cy: vp.cy, width: this.w, height: this.h };
+    // 집중 보기: 펼치는 건 φ를 감싸는 두 주제뿐(떠나는 주제는 접히고 다가오는 주제는 펼쳐짐). 하늘 보기·쓰기는 모두 접힘
+    const raw = this.write ? this.items.map(() => 0) : focusExpansion(this.phi, this.items);
+    // f: 하늘(0) ↔ 집중(1). 카드는 f를 따라 빨려 들어가고/터져 나오고, 다른 주제 흐림(dimF)은 카드보다 늦게 걷히고 먼저 깔린다
+    const f = this.f;
+    const dimF = Math.min(1, f * 2) ** 2 * (3 - 2 * Math.min(1, f * 2));
+    const ps = this.items.map((it) => projectGlobe(it.lambda, it.beta, this.phi, this.theta, vp));
+    let front = -1;
+    let focusI = -1;
+    ps.forEach((p, i) => {
+      if (front < 0 || p.dist < ps[front]!.dist) front = i;
+      if (raw[i]! > 0.5 && (focusI < 0 || raw[i]! > raw[focusI]!)) focusI = i;
+    });
+    // 집중된 주제의 펼친 고리 영역(화면 좌표): 그 안에 겹치는 다른 주제는 더 흐리게
+    const fr = focusI >= 0 ? this.items[focusI]!.ext : null;
+    const fp = focusI >= 0 ? ps[focusI]! : null;
+    this.items.forEach((it, i) => {
+      const p = ps[i]!;
+      const e = raw[i]! * f;
+      // 펼칠수록 원래 크기로, 그리고 화면 중심에 가까울수록 크게(어안)
+      const mC = fisheye(p.x, p.y, fv);
+      let scale = (p.scale + (1 - p.scale) * e) * mC;
+      let { x, y } = p;
+      if (this.settled && e === 1) {
+        // 멈춘 정가운데 주제는 정수 픽셀·정확한 배율로 다시 그려 글자 선명
         scale = 1;
         x = Math.round(x);
         y = Math.round(y);
       }
       const s = it.el.style;
       s.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) scale(${scale.toFixed(4)})`;
-      // 조망·쓰기 모드는 라벨만 보이므로 뒤쪽 라벨도 읽히게 바닥값을 둔다
-      s.opacity = (overview || this.write ? Math.max(0.45, p.opacity) : p.opacity).toFixed(3);
-      s.zIndex = String(1000 + Math.round(p.z * 500));
-      const lod = this.lodFor(it, p, isFront, many, overview);
-      if (this.lods.get(it.el) !== lod) {
-        this.lods.set(it.el, lod);
-        it.el.dataset.lod = lod;
+      let op = topicOpacity(p.opacity, raw[i]!, dimF);
+      if (fr && fp && i !== focusI && p.x > fp.x + fr.l && p.x < fp.x + fr.r && p.y > fp.y + fr.t && p.y < fp.y + fr.b) op *= 1 - 0.7 * dimF;
+      s.opacity = (this.write ? Math.max(0.45, op) : op).toFixed(3);
+      s.zIndex = String(1000 + Math.round(p.z * 500) + (raw[i]! > 0 ? 600 + Math.round(raw[i]! * 100) : 0));
+
+      const st = this.state.get(it.el) ?? { e: -1, ls: 0 };
+      const lod: Lod = e > 0.001 ? 'open' : this.write ? 'label' : 'dots';
+      if (st.lod !== lod) it.el.dataset.lod = lod;
+      if (lod === 'open' && (this.mode !== 'idle' || Math.abs(st.e - e) > 0.001 || st.lod !== 'open' || this.settled)) {
+        // 점 구름 ↔ 둘레 칸. 카드마다 조금씩 시차(빨려 들어갈 때 바깥 칸부터), 자기 화면 자리의 어안 배율
+        const n = it.cards.length;
+        it.cards.forEach((c, j) => {
+          const fj = Math.max(0, Math.min(1, f * 1.3 - (0.3 * j) / Math.max(1, n)));
+          const ej = raw[i]! * fj;
+          const ce = ej * ej * (3 - 2 * ej);
+          const cs = DOT_CARD + (it.k - DOT_CARD) * ce;
+          const lx = c.dx + (c.rx - c.dx) * ce, ly = c.dy + (c.ry - c.dy) * ce;
+          const m = fisheye(x + lx * scale, y + ly * scale, fv) / mC;
+          c.el.style.transform = `translate3d(${lx.toFixed(1)}px, ${ly.toFixed(1)}px, 0) scale(${(cs * m).toFixed(3)})`;
+        });
+      } else if (lod !== 'open' && st.lod === 'open') {
+        for (const c of it.cards) c.el.style.transform = `translate3d(${c.dx}px, ${c.dy}px, 0)`;
       }
-      if (it.tag) {
-        if (lod === 'dots' || lod === 'label') {
-          it.tag.style.transform = `translate(-50%, -50%) scale(${Math.min(3, Math.max(1, it.tagFit / scale)).toFixed(3)})`;
-          this.tagScaled.add(it.tag);
-        } else if (this.tagScaled.has(it.tag)) {
-          it.tag.style.transform = '';
-          this.tagScaled.delete(it.tag);
-        }
-      }
-    }
-    if (!this.opts.scrollTarget) this.applyFrontScroll(front);
+      // 이름표: 가운데에서는 원래 크기(평면 보드 이름표와 같은 15px), 멀어지면 읽히게 역배율(최대 2.6배)
+      const ls = Math.min(2.6, Math.max(1, 0.95 / scale));
+      const lsChanged = Math.abs(ls - st.ls) > 0.01;
+      if (it.tag && lsChanged) it.tag.style.transform = `translate(-50%, -50%) scale(${ls.toFixed(3)})`;
+      if (st.e < 0 || e.toFixed(2) !== st.e.toFixed(2)) it.el.dataset.e = e.toFixed(2);
+      this.state.set(it.el, { lod, e, ls: lsChanged ? ls : st.ls });
+    });
     const r = this.root;
     r.dataset.phi = this.phi.toFixed(2);
-    r.dataset.front = front?.id ?? '';
-    r.dataset.delta = front ? Math.abs(wrapDeg(front.lambda - this.phi)).toFixed(2) : '';
+    r.dataset.pitch = this.theta.toFixed(2);
+    r.dataset.front = front >= 0 ? this.items[front]!.id : '';
+    r.dataset.delta = front >= 0 ? ps[front]!.dist.toFixed(2) : '';
     r.dataset.settled = this.settled ? '1' : '0';
-  }
-
-  private lodFor(it: GlobeItem, p: Projection, isFront: boolean, many: boolean, overview: boolean): Lod {
-    if (this.write) return 'label';
-    if (overview) return 'dots';
-    if (many && p.side === 'back') return 'dots';
-    if (it.big && !(isFront && p.side === 'front')) return 'summary';
-    return 'full';
-  }
-
-  private applyFrontScroll(front: GlobeItem | null) {
-    const el = front?.body ?? null;
-    if (this.scrollEl && this.scrollEl !== el) {
-      this.scrollEl.style.transform = '';
-      this.scrollY = 0;
-    }
-    this.scrollEl = el;
-    if (el) el.style.transform = this.scrollY ? `translate3d(0, ${this.scrollY.toFixed(1)}px, 0)` : '';
-  }
-
-  private scrollBy(dy: number) {
-    const st = this.opts.scrollTarget?.();
-    if (st) {
-      this.scrollY = Math.max(st.min, Math.min(st.max, this.scrollY + dy));
-      st.el.style.transform = `translate3d(0, ${this.scrollY.toFixed(1)}px, 0)`;
-      return;
-    }
-    const f = this.front();
-    if (!f) return;
-    const p = projectGlobe(f.lambda, f.beta, this.phi, this.vp());
-    const min = Math.min(0, this.h - MOTION.dockH - (p.y + f.bottom * p.scale));
-    const max = Math.max(0, MOTION.topPad - (p.y + f.top * p.scale));
-    this.scrollY = Math.max(min, Math.min(max, this.scrollY + dy));
-    this.render();
-  }
-
-  /** B안: 판이 바뀌면 스크롤 원점부터 */
-  resetScroll() {
-    this.scrollY = 0;
+    if (r.dataset.mode !== (this.focus ? 'focus' : 'sky')) r.dataset.mode = this.focus ? 'focus' : 'sky';
   }
 
   // ---------- 제스처 ----------
 
   private bind(): () => void {
     const el = this.root;
-    const pointers = new Map<number, { x: number; y: number }>();
-    let gesture: 'none' | 'pending' | 'h' | 'v' | 'pinch' = 'none';
+    let pointer: { id: number; x: number } | null = null;
+    let gesture: 'none' | 'pending' | 'drag' = 'none';
     let start = { x: 0, y: 0, t: 0 };
     let startTarget: Element | null = null;
     let lastMove = 0;
-    let pinchStart = 0;
-    let pinchFired = false;
 
     const down = (e: PointerEvent) => {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (pointer) return; // 두 번째 손가락은 무시(조망 화면 없음)
       const target = e.target as Element;
-      if (this.opts.shouldIgnore(target)) return;
-      if (pointers.size === 0 && e.clientX < MOTION.edgeFree) return;
-      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this.opts.shouldIgnore(target) || e.clientX < MOTION.edgeFree) return;
+      pointer = { id: e.pointerId, x: e.clientX };
       el.setPointerCapture?.(e.pointerId);
-      if (pointers.size === 1) {
-        gesture = 'pending';
-        start = { x: e.clientX, y: e.clientY, t: performance.now() };
-        startTarget = target;
-        // 도는 중에 잡으면 그 자리에서 멈춘다
-        if (this.mode === 'spring') { this.mode = 'drag'; this.vel = 0; }
-      } else if (pointers.size === 2) {
-        gesture = 'pinch';
-        const [a, b] = [...pointers.values()] as [{ x: number; y: number }, { x: number; y: number }];
-        pinchStart = Math.hypot(a.x - b.x, a.y - b.y);
-        pinchFired = false;
+      gesture = 'pending';
+      start = { x: e.clientX, y: e.clientY, t: performance.now() };
+      startTarget = target;
+      // 도는 중에 잡으면 그 자리에서 멈춘다
+      if (this.mode === 'spring') {
+        this.mode = 'drag';
+        this.vel = 0;
       }
     };
 
     const move = (e: PointerEvent) => {
-      const p = pointers.get(e.pointerId);
-      if (!p) return;
-      const dx = e.clientX - p.x, dy = e.clientY - p.y;
-      p.x = e.clientX;
-      p.y = e.clientY;
-      if (gesture === 'pinch') {
-        if (pointers.size < 2 || pinchFired) return;
-        const [a, b] = [...pointers.values()] as [{ x: number; y: number }, { x: number; y: number }];
-        const ratio = Math.hypot(a.x - b.x, a.y - b.y) / (pinchStart || 1);
-        if (ratio < 0.75 || ratio > 1.3) {
-          pinchFired = true;
-          this.opts.onPinch(ratio < 1);
-        }
-        return;
-      }
+      if (!pointer || pointer.id !== e.pointerId) return;
+      const dx = e.clientX - pointer.x;
+      pointer.x = e.clientX;
       if (gesture === 'pending') {
-        const tx = e.clientX - start.x, ty = e.clientY - start.y;
-        if (Math.hypot(tx, ty) <= MOTION.axisSlop) return;
-        gesture = Math.abs(tx) >= Math.abs(ty) ? 'h' : 'v';
-        if (gesture === 'h') {
-          this.mode = 'drag';
-          this.vel = 0;
-          lastMove = performance.now();
-          if (this.opts.scrollTarget) this.scrollY = 0;
-          this.opts.onMoveStart();
-          this.settled = false;
-        }
+        if (Math.hypot(e.clientX - start.x, e.clientY - start.y) <= MOTION.tapSlop) return;
+        gesture = 'drag';
+        this.mode = 'drag';
+        this.vel = 0;
+        lastMove = performance.now();
+        this.settled = false;
       }
-      if (gesture === 'h') {
-        const now = performance.now();
-        const d = -dx * MOTION.degPerPx / Math.max(0.3, this.zoom);
-        this.phi += d;
-        const ms = now - lastMove;
-        if (ms > 0) this.vel = this.vel * 0.4 + (d / (ms / 1000)) * 0.6;
-        lastMove = now;
-        this.kick();
-      } else if (gesture === 'v') {
-        this.scrollBy(dy);
-      }
+      // 좌우만 돌린다. 위아래 움직임은 무시(높이는 주제를 따라간다)
+      const now = performance.now();
+      const d = -dx * MOTION.degPerPx / Math.max(0.3, this.zoom);
+      this.phi += d;
+      const ms = now - lastMove;
+      if (ms > 0) this.vel = this.vel * 0.4 + (d / (ms / 1000)) * 0.6;
+      lastMove = now;
+      this.kick();
     };
 
     const up = (e: PointerEvent) => {
-      if (!pointers.has(e.pointerId)) return;
-      pointers.delete(e.pointerId);
-      if (pointers.size > 0) return;
+      if (!pointer || pointer.id !== e.pointerId) return;
+      pointer = null;
       const g = gesture;
       gesture = 'none';
-      if (g === 'pending' || this.mode === 'drag') {
-        if (g === 'pending' && performance.now() - start.t < 600 && startTarget) this.opts.onTap(startTarget);
-        if (this.mode === 'drag') this.release(performance.now() - lastMove > 90 ? 0 : this.vel);
-      }
+      if (g === 'pending' && performance.now() - start.t < 600 && startTarget) this.opts.onTap(startTarget, e.clientX, e.clientY);
+      if (this.mode === 'drag') this.release(performance.now() - lastMove > 90 ? 0 : this.vel);
     };
 
     const cancel = (e: PointerEvent) => {
-      pointers.delete(e.pointerId);
-      if (pointers.size === 0) {
-        gesture = 'none';
-        if (this.mode === 'drag') this.release(0);
-      }
+      if (!pointer || pointer.id !== e.pointerId) return;
+      pointer = null;
+      gesture = 'none';
+      if (this.mode === 'drag') this.release(0);
     };
 
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
+      // 가로·세로 휠 모두 좌우 회전
       const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
-      if (this.mode !== 'wheel') {
-        this.opts.onMoveStart();
-        if (this.opts.scrollTarget) this.scrollY = 0;
-      }
       this.mode = 'wheel';
       this.vel = 0;
       this.settled = false;
@@ -402,7 +372,7 @@ export class GlobeEngine {
       this.wheelTimer = window.setTimeout(() => this.release(0), 140);
     };
 
-    // iOS 사파리의 페이지 확대 제스처를 막는다(두 손가락은 조망 전환에 쓴다)
+    // iOS 사파리의 페이지 확대 제스처를 막는다
     const noGesture = (e: Event) => e.preventDefault();
     const noMenu = (e: Event) => e.preventDefault();
     const onResize = () => this.resize();

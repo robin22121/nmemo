@@ -1,12 +1,13 @@
 import { useReducedMotion } from 'framer-motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { fitClusterCards, GLOBE, placeTopics } from '../../core/layout/globe';
+import { GLOBE, pickShown, placeTopics, ringCapacity, ringLayout, type RingBox } from '../../core/layout/globe';
 import { setDone } from '../../db/repo';
 import type { Memo, Topic } from '../../db/schema';
-import { CardFace, cardText, cardTilt } from '../MemoCard';
+import { CardFace, cardTilt } from '../MemoCard';
 import { useBoardData } from '../useBoardData';
 import { GlobeComposer } from './Composer';
-import { MOTION, VARIANT, WRITE_MOCK } from './config';
+import { MOTION, WRITE_MOCK } from './config';
+import { TopicListSheet } from './TopicListSheet';
 import { GlobeEngine, type GlobeItem } from './engine';
 import './globe.css';
 
@@ -14,95 +15,107 @@ interface Cluster {
   topic: Topic;
   lambda: number;
   beta: number;
-  /** 지구본용으로 맞춘 카드 로컬 좌표(가운데에서 가까운 순) */
-  cards: { memo: Memo; x: number; y: number }[];
-  top: number;
-  bottom: number;
+  /** 펼쳤을 때 보이는 카드: 펼친 자리(r)와 접힌 점 자리(d), 이름표 중심 기준 */
+  cards: { memo: Memo; rx: number; ry: number; dx: number; dy: number }[];
+  /** 펼쳐도 숨는 메모의 점 자리(접혔을 때만 보임) */
+  dots: { id: string; dx: number; dy: number }[];
+  /** 숨긴 수와 "+N" 칩 자리(넘칠 때만) */
+  more: { n: number; rx: number; ry: number } | null;
+  k: number;
+  count: number;
 }
 
-const LABEL_H = 34;
+/** 이름표를 화면 정가운데 둘 때 카드가 들어갈 화면 안 범위(입력 바 위까지) */
+function ringBox(): RingBox {
+  const w = window.innerWidth, h = window.innerHeight;
+  const dockTop = document.querySelector('.dock')?.getBoundingClientRect().top ?? h - 110;
+  return { left: -w / 2 + 8, right: w / 2 - 8, top: -h / 2 + MOTION.topPad, bottom: dockTop - MOTION.bottomPad - h / 2 };
+}
 
 /**
- * 지구본 보드 프로토타입(`?globe=1`). 주제가 세로축을 중심으로 돈다.
- * 회전은 GlobeEngine이 DOM에 직접 쓰고, React는 데이터·모드가 바뀔 때만 다시 그린다.
+ * 지구본(천구) 보드 프로토타입(`?globe=1`). 주제가 화면 위아래 전체에 별처럼 흩어져 있고
+ * 좌우로 돌리면 시선 높이가 다가오는 주제를 따라간다. 정가운데 가까운 주제일수록 이름표 둘레로 카드가 연속으로 펼쳐진다.
+ * 회전은 GlobeEngine이 DOM에 직접 쓰고, React는 데이터·화면 크기가 바뀔 때만 다시 그린다.
  */
 export function GlobeBoard({ onSelectMemo }: { onSelectMemo: (memoId: string | null) => void }) {
   const { topics, memos, links, layout, ready } = useBoardData();
   const reduced = !!useReducedMotion();
   const rootRef = useRef<HTMLDivElement>(null);
   const engine = useRef<GlobeEngine | null>(null);
-  const els = useRef(new Map<string, { el: HTMLElement | null; body: HTMLElement | null; tag: HTMLElement | null }>());
-  const panelRef = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(() => window.innerWidth);
-  const [overview, setOverview] = useState(false);
+  const els = useRef(new Map<string, { el: HTMLElement | null; tag: HTMLElement | null }>());
+  const cardEls = useRef(new Map<string, HTMLElement | null>());
+  const [box, setBox] = useState<RingBox>(() => ringBox());
   const [writing, setWriting] = useState(WRITE_MOCK);
-  const [panelId, setPanelId] = useState<string | null>(null);
+  const [listTopic, setListTopic] = useState<string | null>(null);
   const select = useRef(onSelectMemo);
   select.current = onSelectMemo;
 
   useEffect(() => {
-    const on = () => setWidth(window.innerWidth);
+    const on = () => setBox(ringBox());
+    on(); // 입력 바가 그려진 뒤 다시 잰다
     window.addEventListener('resize', on);
     return () => window.removeEventListener('resize', on);
   }, []);
 
   const clusters = useMemo<Cluster[]>(() => {
     const byId = new Map(memos.map((m) => [m.id, m]));
+    const cap = ringCapacity(box);
     const place = placeTopics({
       topics: Object.keys(layout.clusters).map((id) => ({ id })),
       memos: Object.entries(layout.cards).map(([id, c]) => ({ id, topicId: c.topicId })),
       links: links.map((l) => ({ fromId: l.fromId, toId: l.toId, strength: l.strength })),
     });
-    const maxHalfW = width / 2 - GLOBE.cardW / 2 - 8;
     return topics.flatMap((topic) => {
       const pl = place.topics[topic.id];
       const c = layout.clusters[topic.id];
       if (!pl || !c) return [];
+      // 점 구름은 기존 무리 배치를 줄여 쓴다. 펼치면 최근 K개만 오래된 것부터 이름표 둘레 시계방향(12시 시작),
+      // 넘치는 만큼은 다음 칸의 "+N" 칩으로(D16·D18)
       const local = Object.entries(layout.cards)
-        .filter(([, p]) => p.topicId === topic.id)
-        .map(([id, p]) => ({ id, x: p.x - c.x, y: p.y - c.y }));
-      const cards = fitClusterCards(local, maxHalfW)
-        .flatMap((p) => (byId.has(p.id) ? [{ memo: byId.get(p.id)!, x: p.x, y: p.y }] : []))
-        .sort((a, b) => Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y));
-      const ys = cards.map((k) => k.y);
-      const top = Math.min(0, ...ys) - GLOBE.cardH / 2 - LABEL_H;
-      const bottom = Math.max(0, ...ys) + GLOBE.cardH / 2 + 8;
-      return [{ topic, lambda: pl.lambda, beta: pl.beta, cards, top, bottom }];
+        .filter(([id, p]) => p.topicId === topic.id && byId.has(id))
+        .map(([id, p]) => ({ id, createdAt: byId.get(id)!.createdAt, memo: byId.get(id)!, dx: (p.x - c.x) * GLOBE.dotSpread, dy: (p.y - c.y) * GLOBE.dotSpread }));
+      const { shown, hidden } = pickShown(local, cap);
+      const ring = ringLayout(shown.length + (hidden ? 1 : 0), box);
+      const cards = shown.map((l, i) => ({ memo: l.memo, dx: l.dx, dy: l.dy, rx: ring.pos[i]!.x, ry: ring.pos[i]!.y }));
+      const shownIds = new Set(shown.map((l) => l.id));
+      const dots = local.filter((l) => !shownIds.has(l.id)).map(({ id, dx, dy }) => ({ id, dx, dy }));
+      const mp = ring.pos[shown.length];
+      const more = hidden && mp ? { n: hidden, rx: mp.x, ry: mp.y } : null;
+      return [{ topic, lambda: pl.lambda, beta: pl.beta, cards, dots, more, k: ring.k, count: local.length }];
     });
-  }, [topics, memos, links, layout, width]);
+  }, [topics, memos, links, layout, box]);
 
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
     const e = new GlobeEngine(root, {
       shouldIgnore: (t) => !!t.closest('[data-todo-check], [data-no-pan]'),
-      onTap: (t) => {
-        const tid = t.closest('[data-topic-id]')?.getAttribute('data-topic-id');
+      onTap: (t, x, y) => {
         const front = root.dataset.front;
+        const focus = e.isFocus;
+        const tid = t.closest('[data-topic-id]')?.getAttribute('data-topic-id');
         const card = t.closest('[data-memo-id]')?.getAttribute('data-memo-id');
-        if (root.dataset.overview === '1' && tid) {
-          setOverview(false);
-          e.rotateTo(tid);
-        } else if (card && (!tid || tid === front)) select.current(card);
-        else if (tid && tid !== front) e.rotateTo(tid);
-        else select.current(null);
+        // 집중 보기: 가운데 주제의 카드 → 메모 상세, "+N" → 그 주제 메모 전체 목록
+        if (focus && card && tid === front) return select.current(card);
+        if (focus && t.closest('[data-more]') && tid && tid === front) return setListTopic(tid);
+        // 손가락에 가장 가까운 이름표(뒷면 포함, 둘레 16px까지)
+        let best: { id: string; d: number } | null = null;
+        for (const [id, r] of els.current) {
+          const b = r.tag?.getBoundingClientRect();
+          if (!b) continue;
+          const d = Math.hypot(Math.max(b.left - x, 0, x - b.right), Math.max(b.top - y, 0, y - b.bottom));
+          if (d <= 16 && (!best || d < best.d)) best = { id, d };
+        }
+        if (best) {
+          // 이름표: 하늘 보기면 그 주제로 돌며 메모가 터져 나오고, 집중 보기면 그 주제로 돌아 집중
+          if (!focus) e.focusTo(best.id);
+          else if (best.id !== front) e.rotateTo(best.id);
+          return;
+        }
+        // 빈 곳: 집중 → 하늘(메모가 이름표로 빨려 들어가고 다른 주제가 드러남), 하늘 → 가운데 주제에 다시 집중
+        select.current(null);
+        e.setFocus(!focus);
       },
-      onSettle: (id) => {
-        if (VARIANT === 'b') setPanelId(id);
-      },
-      onMoveStart: () => {
-        if (VARIANT === 'b') setPanelId(null);
-      },
-      onPinch: (out) => setOverview(out),
-      scrollTarget:
-        VARIANT === 'b'
-          ? () => {
-              const p = panelRef.current;
-              const body = p?.firstElementChild as HTMLElement | null;
-              if (!p || !body) return null;
-              return { el: body, min: Math.min(0, p.clientHeight - body.scrollHeight - 16), max: 0 };
-            }
-          : undefined,
     });
     engine.current = e;
     return () => {
@@ -115,68 +128,74 @@ export function GlobeBoard({ onSelectMemo }: { onSelectMemo: (memoId: string | n
     const items: GlobeItem[] = clusters.flatMap((c) => {
       const r = els.current.get(c.topic.id);
       if (!r?.el) return [];
-      return [{
-        id: c.topic.id, lambda: c.lambda, beta: c.beta, el: r.el, body: r.body, tag: r.tag,
-        top: c.top, bottom: c.bottom, tagFit: VARIANT === 'a' ? 0.85 : 0.55, big: VARIANT === 'a' && c.cards.length > MOTION.bigTopic, weight: c.cards.length,
-      }];
+      const cards = c.cards.flatMap((k) => {
+        const el = cardEls.current.get(k.memo.id);
+        return el ? [{ el, rx: k.rx, ry: k.ry, dx: k.dx, dy: k.dy }] : [];
+      });
+      // "+N" 칩도 카드처럼 이름표 자리에서 펼쳐져 나온다
+      const chip = cardEls.current.get(`more:${c.topic.id}`);
+      if (c.more && chip) cards.push({ el: chip, rx: c.more.rx, ry: c.more.ry, dx: 0, dy: 0 });
+      return [{ id: c.topic.id, lambda: c.lambda, beta: c.beta, el: r.el, tag: r.tag, cards, k: c.k, weight: c.count }];
     });
     engine.current?.setItems(items);
   }, [clusters]);
 
   useEffect(() => {
-    engine.current?.setMode({ write: writing, overview, reduced });
-    if (rootRef.current) rootRef.current.dataset.overview = overview ? '1' : '0';
-  }, [writing, overview, reduced]);
+    engine.current?.setMode({ write: writing, reduced });
+  }, [writing, reduced]);
 
-  useEffect(() => engine.current?.resetScroll(), [panelId]);
-
-  const reg = (id: string, key: 'el' | 'body' | 'tag') => (node: HTMLElement | null) => {
-    const r = els.current.get(id) ?? { el: null, body: null, tag: null };
+  const reg = (id: string, key: 'el' | 'tag') => (node: HTMLElement | null) => {
+    const r = els.current.get(id) ?? { el: null, tag: null };
     r[key] = node;
     els.current.set(id, r);
   };
-
-  const panel = VARIANT === 'b' && panelId && !overview && !writing ? clusters.find((c) => c.topic.id === panelId) : undefined;
+  const regCard = (id: string) => (node: HTMLElement | null) => {
+    cardEls.current.set(id, node);
+  };
 
   return (
     <div
       className="board g-board"
       ref={rootRef}
       data-testid="board"
-      data-variant={VARIANT}
       data-write={writing ? '1' : undefined}
       data-blur={writing && MOTION.composerBlur ? '1' : undefined}
     >
       <div className="g-stage">
-        {clusters.map((c) =>
-          VARIANT === 'a' ? (
-            <ClusterA key={c.topic.id} c={c} reg={reg} />
-          ) : (
-            <TileB key={c.topic.id} c={c} reg={reg} open={!!panel && panel.topic.id === c.topic.id} />
-          ),
-        )}
-      </div>
-      {panel && (
-        <div className="g-panel" ref={panelRef} key={panel.topic.id} style={{ ['--c' as string]: panel.topic.color }}>
-          <div className="g-panel-body">
-            <div className="g-panel-name">{panel.topic.name}<span>{panel.cards.length}</span></div>
-            <div className="g-panel-cards">
-              {panel.cards.map(({ memo }) => (
-                <div key={memo.id} className="g-pcard" data-memo-id={memo.id} data-topic-id={panel.topic.id}>
-                  <div className="card" style={{ transform: `rotate(${cardTilt(memo) * 0.5}deg)` }}>
-                    <CardFace memo={memo} onToggleDone={(id, d) => void setDone(id, d)} />
-                  </div>
+        {clusters.map((c) => (
+          <div key={c.topic.id} className="g-cluster" data-topic-id={c.topic.id} ref={reg(c.topic.id, 'el')} style={{ ['--c' as string]: c.topic.color }}>
+            <div className="g-glow" />
+            {c.cards.map(({ memo, dx, dy }) => (
+              <div key={memo.id} className="g-card" data-memo-id={memo.id} ref={regCard(memo.id)} style={{ transform: `translate3d(${dx}px, ${dy}px, 0)` }}>
+                <div className="card" style={{ transform: `translate(-50%, -50%) rotate(${cardTilt(memo)}deg)` }}>
+                  <CardFace memo={memo} onToggleDone={(mid, d) => void setDone(mid, d)} />
                 </div>
-              ))}
+                <i className="g-dot" />
+              </div>
+            ))}
+            {c.dots.map(({ id, dx, dy }) => (
+              <i key={id} className="g-dot g-dot-only" style={{ transform: `translate3d(${dx}px, ${dy}px, 0)` }} />
+            ))}
+            {c.more && (
+              <div className="g-card g-more" data-more ref={regCard(`more:${c.topic.id}`)} style={{ transform: 'translate3d(0, 0, 0)' }}>
+                <span>+{c.more.n}</span>
+              </div>
+            )}
+            <div className="g-tag" ref={reg(c.topic.id, 'tag')} data-topic-label>
+              {c.topic.name}
             </div>
           </div>
-        </div>
-      )}
-      {memos.length > 0 && !writing && (
-        <button type="button" className="overview-btn" data-testid="overview-btn" data-no-pan onClick={() => setOverview(!overview)}>
-          {overview ? '돌아오기' : '전체'}
-        </button>
-      )}
+        ))}
+      </div>
+      <TopicListSheet
+        topic={topics.find((t) => t.id === listTopic) ?? null}
+        memos={listTopic ? memos.filter((m) => m.topicId === listTopic) : []}
+        onClose={() => setListTopic(null)}
+        onPick={(id) => {
+          setListTopic(null);
+          select.current(id);
+        }}
+      />
       {writing && <GlobeComposer onDismiss={() => setWriting(false)} />}
       {WRITE_MOCK && !writing && (
         <button type="button" className="g-pen" data-no-pan onClick={() => setWriting(true)}>
@@ -185,67 +204,6 @@ export function GlobeBoard({ onSelectMemo }: { onSelectMemo: (memoId: string | n
       )}
       {ready && memos.length === 0 && <div className="empty-hint">떠오르는 걸 아무렇게나 던져보세요</div>}
       <span hidden data-testid="board-info" data-clusters={clusters.length} data-cards={memos.length} />
-    </div>
-  );
-}
-
-type Reg = (id: string, key: 'el' | 'body' | 'tag') => (node: HTMLElement | null) => void;
-
-/** A안: 무리 전체가 카드째 돈다. 세부 단계(data-lod)는 엔진이 바꾸고 CSS가 보이기만 바꾼다 */
-function ClusterA({ c, reg }: { c: Cluster; reg: Reg }) {
-  const id = c.topic.id;
-  const extra = c.cards.length - MOTION.bigPreview;
-  return (
-    <div className="g-cluster" data-topic-id={id} ref={reg(id, 'el')} style={{ ['--c' as string]: c.topic.color }}>
-      <div className="g-glow" style={{ width: (c.bottom - c.top) * 1.4, height: (c.bottom - c.top) * 1.4 }} />
-      <div className="g-body" ref={reg(id, 'body')}>
-        <div className="g-label" data-topic-label style={{ transform: `translate(-50%, ${c.top}px)` }}>
-          {c.topic.name}
-        </div>
-        {c.cards.map(({ memo, x, y }, i) => (
-          <div
-            key={memo.id}
-            className="g-card"
-            data-memo-id={memo.id}
-            data-extra={i >= MOTION.bigPreview ? '1' : undefined}
-            style={{ transform: `translate(${x}px, ${y}px)` }}
-          >
-            <div className="card" style={{ transform: `translate(-50%, -50%) rotate(${cardTilt(memo)}deg)` }}>
-              <CardFace memo={memo} onToggleDone={(mid, d) => void setDone(mid, d)} />
-            </div>
-          </div>
-        ))}
-        {extra > 0 && <div className="g-more">+{extra}</div>}
-      </div>
-      <div className="g-dots" aria-hidden>
-        {c.cards.map(({ memo, x, y }) => (
-          <i key={memo.id} style={{ transform: `translate(${x * 0.5}px, ${y * 0.5}px)` }} />
-        ))}
-      </div>
-      <div className="g-tag" ref={reg(id, 'tag')} data-topic-label>
-        {c.topic.name}
-      </div>
-    </div>
-  );
-}
-
-/** B안: 링에는 가벼운 주제 타일만. 멈춘 정면 주제는 타일 대신 평면 판(g-panel)이 펼쳐진다 */
-function TileB({ c, reg, open }: { c: Cluster; reg: Reg; open: boolean }) {
-  const id = c.topic.id;
-  const preview = [...c.cards].sort((a, b) => b.memo.createdAt - a.memo.createdAt).slice(0, 3);
-  return (
-    <div className={`g-cluster g-tilewrap${open ? ' open' : ''}`} data-topic-id={id} ref={reg(id, 'el')} style={{ ['--c' as string]: c.topic.color }}>
-      <div className="g-tile" ref={reg(id, 'tag')}>
-        <div className="g-tile-name" data-topic-label>
-          {c.topic.name}
-          <span>{c.cards.length}</span>
-        </div>
-        <ul>
-          {preview.map(({ memo }) => (
-            <li key={memo.id}>{cardText(memo)}</li>
-          ))}
-        </ul>
-      </div>
     </div>
   );
 }

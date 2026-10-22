@@ -153,6 +153,10 @@ export async function seedDemoIfEmpty(db: KkeujeogimDB): Promise<boolean> {
 
 /** 성능 측정용 큰 데모(`?demo=big`): 주제 15개·메모 200개. 가장 큰 주제는 30장을 넘는다. 문장은 기본 데모를 돌려 쓴다 */
 const BIG_TOPICS = ['동네 카페', '달리기', '앱 아이디어', '이사 준비', '제주 여행', '요즘 마음', '책 읽기', '요리', '회사 일', '영어 공부', '사진', '음악', '가족', '돈 관리', '건강'];
+const BIG_LINES: [string, MemoKind][] = [
+  ['하면서 떠오른 생각 적어 두기', 'idea'], ['다음 주에 다시 챙기기', 'todo'], ['할 때 기분이 좋았다', 'emotion'],
+  ['관련해서 오늘 본 것', 'observation'], ['새로 해 보고 싶은 방법', 'idea'], ['기록 정리하기', 'todo'],
+];
 const BIG_SIZES = [34, 22, 18, 16, 14, 13, 12, 11, 10, 10, 9, 9, 8, 7, 7];
 
 export function buildBigDemo(now = Date.now()): { topics: Topic[]; memos: Memo[]; links: Link[] } {
@@ -174,7 +178,10 @@ export function buildBigDemo(now = Date.now()): { topics: Topic[]; memos: Memo[]
     const ids: string[] = [];
     for (let k = 0; k < size; k++) {
       const n = memos.length;
-      const s = SEEDS[n % SEEDS.length]!;
+      // 앞 6개 주제는 기본 데모의 같은 주제 문장을 먼저 쓰고, 그 뒤·나머지 주제는 주제 이름으로 만든 문장(주제와 내용이 맞게)
+      const own = SEEDS.filter((x) => TOPICS[x.t]!.name === BIG_TOPICS[t]);
+      const tpl = BIG_LINES[k % BIG_LINES.length]!;
+      const s: Seed = k < own.length ? own[k]! : { t: '', k: tpl[1], s: `${BIG_TOPICS[t]} ${tpl[0]}${k >= BIG_LINES.length + own.length ? ` (${k + 1})` : ''}`, kw: [BIG_TOPICS[t]!] };
       const emo = E[s.e ?? '담담']!;
       const id = `big-memo-${String(n).padStart(3, '0')}`;
       ids.push(id);

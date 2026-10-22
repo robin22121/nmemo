@@ -7,7 +7,7 @@ import { spring } from '../motion/presets';
 import { useObjectUrl } from './hooks';
 import { CloseIcon } from './icons';
 
-const KIND_LABEL: Record<string, string> = { idea: '아이디어', emotion: '감정', observation: '관찰', todo: '할 일' };
+export const KIND_LABEL: Record<string, string> = { idea: '아이디어', emotion: '감정', observation: '관찰', todo: '할 일' };
 
 interface Props {
   memoId: string | null;
@@ -16,7 +16,7 @@ interface Props {
   notify: (m: string) => void;
 }
 
-function fmtDate(ms: number): string {
+export function fmtDate(ms: number): string {
   const d = new Date(ms);
   return `${d.getMonth() + 1}월 ${d.getDate()}일 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }

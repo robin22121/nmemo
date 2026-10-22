@@ -1,77 +1,66 @@
-/* 지구본 보드 프로토타입(?globe=1). .board의 배경·touch-action:none을 그대로 쓴다. */
+/* 지구본(천구) 보드 프로토타입(?globe=1). .board의 배경·touch-action:none을 그대로 쓴다. */
 .g-board { user-select: none; -webkit-user-select: none; }
 .g-stage { position: absolute; inset: 0; isolation: isolate; }
 .g-board[data-blur='1'] .g-stage { filter: blur(6px); }
 
+/* 무리 컨테이너: 원점 = 이름표 중심 */
 .g-cluster { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
-/* 도는 동안만 레이어로 올린다. 멈추면 풀어서 정면 무리를 원래 크기로 다시 래스터(글자 선명) */
+/* 도는 동안만 레이어로 올린다. 멈추면 풀어서 정가운데 주제를 원래 크기로 다시 래스터(글자 선명) */
 .g-board[data-moving='1'] .g-cluster { will-change: transform, opacity; }
+/* 동작 줄이기: 집중↔하늘은 날아가지 않고 크로스페이드 */
+.g-board[data-reduced='1'] .g-cluster { transition: opacity 0.25s ease; }
+/* 펼쳐지는 중인 무리는 카드가 프레임마다 움직여 다시 그려지므로, 도는 동안은 비싼 그림자를 뺀다 */
+.g-board[data-moving='1'] .face { box-shadow: none; }
+/* 펼친 무리의 카드는 어안 때문에 도는 동안 프레임마다 자리·크기가 바뀐다 → 각자 레이어로(무리 전체 다시 그리기 방지) */
+.g-board[data-moving='1'] .g-cluster[data-lod='open'] .g-card { will-change: transform; }
 
 .g-glow {
-  position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none;
-  background: radial-gradient(circle, color-mix(in srgb, var(--c) 34%, transparent) 0%, color-mix(in srgb, var(--c) 16%, transparent) 38%, transparent 66%);
+  position: absolute; left: -130px; top: -130px; width: 260px; height: 260px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, color-mix(in srgb, var(--c) 34%, transparent) 0%, color-mix(in srgb, var(--c) 14%, transparent) 40%, transparent 68%);
 }
-.g-body { position: absolute; left: 0; top: 0; }
-.g-label {
-  position: absolute; left: 0; top: 0; white-space: nowrap; font-size: 16px; font-weight: 700; padding: 3px 12px; border-radius: 999px;
-  color: color-mix(in srgb, var(--c) 45%, var(--ink)); background: rgba(255, 252, 245, 0.8); cursor: pointer;
+.g-tag {
+  position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); transform-origin: 50% 50%; white-space: nowrap; z-index: 1;
+  /* 평면 보드 무리 이름표(.cluster-label)와 같은 크기 */
+  font-size: 15px; font-weight: 700; letter-spacing: -0.01em; padding: 2px 10px; border-radius: 999px; cursor: pointer;
+  color: color-mix(in srgb, var(--c) 45%, var(--ink)); background: rgba(255, 252, 245, 0.88); box-shadow: 0 1px 6px rgba(58, 50, 38, 0.08);
 }
-.g-card { position: absolute; left: 0; top: 0; width: 0; height: 0; }
 
-/* 지구본 카드는 정면에서 글자 14px 이상 */
+/* 카드: 펼침 e>0이면 카드(엔진이 자리·크기를 씀), 접히면 점 */
+.g-card { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
+.g-dot { pointer-events: none; position: absolute; left: -5px; top: -5px; width: 10px; height: 10px; border-radius: 50%; background: color-mix(in srgb, var(--c) 70%, var(--ink)); opacity: 0.55; display: none; }
+.g-cluster[data-lod='dots'] .g-card .card { display: none; }
+.g-cluster[data-lod='dots'] .g-dot { display: block; }
+.g-dot-only { display: none; }
+.g-cluster[data-lod='label'] .g-card, .g-cluster[data-lod='label'] .g-glow { display: none; }
+
+/* "+N" 칩: 펼친 주제의 다음 칸. 누르면 그 주제 메모 전체 목록 */
+.g-more span {
+  position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); white-space: nowrap; cursor: pointer;
+  font-size: 17px; font-weight: 700; padding: 6px 16px; border-radius: 999px;
+  color: color-mix(in srgb, var(--c) 45%, var(--ink)); background: rgba(255, 252, 245, 0.92);
+  border: 1.5px solid color-mix(in srgb, var(--c) 45%, transparent); box-shadow: var(--shadow);
+}
+.g-cluster[data-lod='dots'] .g-more, .g-cluster[data-lod='label'] .g-more, .g-cluster[data-lod='label'] .g-dot-only { display: none; }
+
+/* 주제 메모 전체 목록 시트 */
+.tl-backdrop { position: fixed; inset: 0; z-index: 51; background: rgba(40, 34, 24, 0.25); }
+.sheet.tl-sheet { z-index: 52; }
+.tl-title { font-size: 17px; }
+.tl-list { list-style: none; margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.tl-row { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; padding: 9px 12px; border-radius: 12px; background: var(--paper-2); }
+.tl-thumb { flex: none; width: 36px; height: 36px; border-radius: 50%; background: #d8d0bf center / cover; }
+.tl-kind { flex: none; }
+.tl-text { flex: 1; min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-date { flex: none; font-size: 11.5px; color: var(--ink-soft); }
+
+/* 펼친 카드는 원래 크기에서 글자 14px */
 .g-board .face-text { font-size: 14px; line-height: 1.3; }
 .g-board .face.idea { width: 120px; }
 .g-board .face.todo { width: 124px; }
 .g-board .face.photo { width: 132px; }
-.g-board .face.emotion { width: 100px; height: 100px; }
-.g-board .face.emotion .face-text, .g-board .face.photo .face-text, .g-board .face.todo .face-text { font-size: 14px; }
-
-.g-more {
-  position: absolute; left: 0; top: 70px; transform: translateX(-50%); display: none;
-  padding: 4px 14px; border-radius: 999px; font-size: 22px; font-weight: 700; color: var(--ink); background: rgba(255, 252, 245, 0.9);
-  box-shadow: var(--shadow);
-}
-.g-dots, .g-tag { display: none; }
-.g-dots { position: absolute; left: 0; top: 0; }
-.g-dots i { position: absolute; left: -5px; top: -5px; width: 10px; height: 10px; border-radius: 50%; background: color-mix(in srgb, var(--c) 70%, var(--ink)); opacity: 0.55; }
-.g-tag {
-  position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); white-space: nowrap; transform-origin: 50% 50%;
-  font-size: 17px; font-weight: 700; padding: 3px 12px; border-radius: 999px; cursor: pointer;
-  color: color-mix(in srgb, var(--c) 45%, var(--ink)); background: rgba(255, 252, 245, 0.85);
-}
-
-/* 세부 단계: full(카드 전부) / summary(대표 카드 + "+N") / dots(라벨 + 점 구름) / label(라벨만) */
-.g-cluster[data-lod='summary'] .g-card[data-extra] { display: none; }
-.g-cluster[data-lod='summary'] .g-more { display: block; }
-.g-cluster[data-lod='dots'] .g-body, .g-cluster[data-lod='label'] .g-body, .g-cluster[data-lod='label'] .g-glow { display: none; }
-.g-cluster[data-lod='dots'] .g-dots { display: block; }
-.g-cluster[data-lod='dots'] .g-tag, .g-cluster[data-lod='label'] .g-tag { display: block; }
-
-/* B안 타일 */
-.g-tile {
-  position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); width: 220px; padding: 12px 14px;
-  border-radius: 18px; background: color-mix(in srgb, var(--c) 22%, rgba(255, 252, 245, 0.92));
-  border: 1px solid color-mix(in srgb, var(--c) 40%, transparent); box-shadow: var(--shadow); cursor: pointer;
-}
-.g-tile-name { font-size: 18px; font-weight: 700; color: color-mix(in srgb, var(--c) 40%, var(--ink)); display: flex; gap: 8px; align-items: baseline; }
-.g-tile-name span { font-size: 13px; font-weight: 500; color: var(--ink-soft); }
-.g-tile ul { margin: 6px 0 0; padding: 0; list-style: none; font-size: 14px; color: var(--ink); }
-.g-tile li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.45; }
-.g-cluster[data-lod='dots'] .g-tile ul, .g-cluster[data-lod='label'] .g-tile ul { display: none; }
-.g-tilewrap.open { visibility: hidden; }
-
-.g-panel {
-  position: absolute; left: 10px; right: 10px; top: 52px; bottom: 150px; z-index: 2; overflow: hidden;
-  border-radius: 22px; background: color-mix(in srgb, var(--c) 12%, rgba(255, 252, 245, 0.95));
-  border: 1px solid color-mix(in srgb, var(--c) 35%, transparent); box-shadow: var(--shadow-lift);
-  animation: g-unfold 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.1);
-}
-@keyframes g-unfold { from { transform: scale(0.45); opacity: 0.2; border-radius: 40px; } }
-.g-panel-body { padding: 14px 12px 24px; }
-.g-panel-name { font-size: 19px; font-weight: 700; margin: 0 4px 12px; color: color-mix(in srgb, var(--c) 40%, var(--ink)); display: flex; gap: 8px; align-items: baseline; }
-.g-panel-name span { font-size: 13px; font-weight: 500; color: var(--ink-soft); }
-.g-panel-cards { display: flex; flex-wrap: wrap; gap: 12px 10px; justify-content: center; align-items: center; }
-.g-pcard .card { position: static; }
+.g-board .face.emotion { width: 72px; height: 72px; padding: 6px; }
+.g-board .face.emotion .face-text { font-size: 12px; -webkit-line-clamp: 3; line-clamp: 3; }
+.g-board .face.photo .face-text, .g-board .face.todo .face-text { font-size: 14px; }
 
 /* 바로 쓰기 목업 */
 .g-dim { position: fixed; inset: 0; z-index: 44; background: rgba(246, 241, 231, 0.5); }
@@ -85,8 +74,4 @@
 .g-pen {
   position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(160px + var(--safe-b)); z-index: 3;
   padding: 10px 20px; border-radius: 999px; background: var(--ink); color: #fffdf7; font-size: 15px; box-shadow: var(--shadow-lift);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .g-panel { animation: none; }
 }
