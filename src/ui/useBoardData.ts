@@ -5,7 +5,7 @@ import { getDb, type Link, type Memo, type Topic } from '../db/schema';
 
 export interface BoardData {
   topics: Topic[];
-  memos: Memo[]; // 무리에 붙은(organized + topicId) 메모
+  memos: Memo[]; // 무리에 붙은(organized + topicId, 또는 고쳐서 다시 정돈 중) 메모
   links: Link[];
   layout: Layout;
   ready: boolean;
@@ -17,7 +17,8 @@ const EMPTY: never[] = [];
 export function useBoardData(): BoardData {
   const topics = useLiveQuery(() => getDb().topics.toArray(), [], undefined);
   const memos = useLiveQuery(
-    async () => (await getDb().memos.where('status').equals('organized').toArray()).filter((m) => m.topicId),
+    // 글을 고쳐 다시 정돈 중인 메모(editReanalyze)도 주제는 그대로라 제자리에 둔다
+    async () => (await getDb().memos.toArray()).filter((m) => m.topicId && (m.status === 'organized' || m.editReanalyze)),
     [],
     undefined,
   );

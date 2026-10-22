@@ -6,7 +6,8 @@ import { getDb, type Memo } from '../db/schema';
 export function usePending(): Memo[] {
   return useLiveQuery(
     async () => {
-      const all = await getDb().memos.where('status').anyOf('pending', 'failed').toArray();
+      // 글을 고쳐 다시 정돈 중인 메모는 보드 제자리에 그대로 있다(대기 칩 아님)
+      const all = (await getDb().memos.where('status').anyOf('pending', 'failed').toArray()).filter((m) => !m.editReanalyze);
       return all.sort((a, b) => a.createdAt - b.createdAt);
     },
     [],

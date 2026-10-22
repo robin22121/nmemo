@@ -4,6 +4,9 @@ const params = new URLSearchParams(typeof location === 'undefined' ? '' : locati
 
 export const GLOBE_ON = params.get('globe') !== '0';
 
+/** 메모장(메모 상세) 두 안(E5): `?sheet=cover` 덮기(불투명 종이) / 기본 `glass` 반투명(주제 색 유리). 폰 비교 후 하나로 정하고 스위치를 없앤다 */
+export const SHEET_STYLE: 'cover' | 'glass' = params.get('sheet') === 'cover' ? 'cover' : 'glass';
+
 /** 앱을 켜면 쓰기 모드(흐린 지구본 앞 큰 쓰기 칸). 시험용으로 `&write=0`이면 바로 보드 */
 export const WRITE_START = params.get('write') !== '0';
 

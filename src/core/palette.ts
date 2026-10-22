@@ -5,6 +5,18 @@ export const TOPIC_PALETTE = [
   '#e8a87c', '#85cdca', '#c38d9e', '#7fb069', '#8ea9e8', '#e6c35c', '#b58de8', '#e88e8e',
 ];
 
+/** 메모장에서 고르는 기본 감정 8개. 색은 정돈기의 감정 팔레트(local.ts)와 같다 */
+export const BASIC_EMOTIONS: readonly { label: string; color: string }[] = [
+  { label: '기쁨', color: '#f6c453' },
+  { label: '설렘', color: '#f4a6c0' },
+  { label: '평온', color: '#9ccfd8' },
+  { label: '담담', color: '#c9c2b0' },
+  { label: '걱정', color: '#a9b4e8' },
+  { label: '슬픔', color: '#8fa7d6' },
+  { label: '화남', color: '#e88e8e' },
+  { label: '지침', color: '#b9b0a0' },
+];
+
 export function pickTopicColor(topics: Pick<Topic, 'color'>[]): string {
   const used = new Set(topics.map((t) => t.color));
   return TOPIC_PALETTE.find((c) => !used.has(c)) ?? TOPIC_PALETTE[topics.length % TOPIC_PALETTE.length]!;

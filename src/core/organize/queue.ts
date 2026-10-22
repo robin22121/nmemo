@@ -165,7 +165,7 @@ export class OrganizeQueue {
       const analyzer = await this.resolveAnalyzer();
       const req = await buildRequest(this.repo, memo, analyzer.usesPhoto ? this.opts.readPhoto : undefined);
       const result = validateResult(await analyzer.analyze(req), req);
-      const outcome = await applyResult(this.repo, memo.id, result, this.now());
+      const outcome = await applyResult(this.repo, memo.id, result, this.now(), req.memo.text);
       if (outcome) this.emit({ type: 'organized', outcome });
     } catch {
       const cur = await this.repo.getMemo(memo.id);

@@ -51,6 +51,8 @@ export function App() {
     const q = getQueue();
     const off = q.subscribe((e) => {
       if (e.type === 'organized') {
+        // 글을 고쳐 다시 정돈한 메모는 제자리에 있었으므로 날아가는 연출이 없다
+        if (e.outcome.edited) return;
         // 대기 카드의 현재 자리를 잡아 두면 보드가 거기서 출발하는 비행을 그린다
         const el = document.querySelector(`[data-pending-id="${e.outcome.memoId}"]`);
         const r = el?.getBoundingClientRect();

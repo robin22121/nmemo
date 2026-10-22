@@ -24,6 +24,11 @@ export interface Memo {
   done?: boolean;
   /** 실패 후 다시 시도해도 되는 시각(ms). 지수 백오프용 */
   retryAt?: number;
+  /** 사용자가 메모장에서 직접 고른 종류·감정 → 재정돈이 덮어쓰지 않는다(색인 아님) */
+  kindLocked?: boolean;
+  emotionLocked?: boolean;
+  /** 글을 고쳐 다시 정돈하는 중: 주제는 그대로 두고 요약·키워드·링크만 갱신한다(색인 아님) */
+  editReanalyze?: boolean;
 }
 
 export interface Topic {
