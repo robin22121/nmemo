@@ -3,7 +3,7 @@ import type { InputType, MemoKind } from '../types';
 export interface AnalyzeRequest {
   memo: { id: string; input: InputType; text: string; photoBase64?: string; photoMime?: string };
   /** 기존 주제 전부(최대 60) */
-  topics: { id: string; name: string; summary: string }[];
+  topics: { id: string; name: string; summary: string; color?: string }[];
   /** 최근 정돈된 메모 요약(최대 80) */
   recent: { id: string; summary: string; topicId?: string }[];
 }
@@ -17,7 +17,7 @@ export interface AnalyzeResult {
   summary: string;
   /** 사진 메모일 때 장면·글자·분위기 설명 */
   text?: string;
-  topic: { existingId: string } | { newName: string; newSummary: string };
+  topic: { existingId: string } | { newName: string; newSummary: string; newColor?: string };
   /** 최대 5개, strength 0~1 */
   related: { id: string; strength: number; reason: string }[];
 }

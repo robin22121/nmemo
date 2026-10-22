@@ -4,6 +4,7 @@ import { MAX_MEMBERS, MAX_RECENT, MAX_TOPICS, type AnalyzeRequest, type Reorgani
 export const SYSTEM_PROMPT = `너는 짧은 메모를 정돈하는 도우미다.
 - 메모의 특성(종류·감정·키워드·한 줄 요약)을 파악한다.
 - 주제는 기존 주제 중 가장 맞는 것을 고른다. 가능하면 기존 주제를 재사용하고, 정말 새로운 경우에만 짧은 새 주제(2~8자 정도)를 만든다. 주제가 과도하게 쪼개지지 않게 한다.
+- 새 주제를 만들 때는 newColor도 정한다. 주제 뜻에 어울리는 색(#rrggbb)으로, 부드러운 중간 채도로 고른다. topics의 기존 주제 이름과 color를 보고, 비슷한 주제는 비슷한 색 계열로, 다른 주제는 기존 주제들과 확실히 다른 색 계열로 한다.
 - 주제는 상하 관계 없이 평평하다. 폴더나 트리 구조로 생각하지 않는다.
 - 관련 메모는 실제로 내용·감정·맥락이 이어지는 것만, 최대 5개. 억지로 채우지 않는다. 관련 있는 것이 없으면 빈 목록이다.
 - 사진 메모는 사진 속 장면·글자·분위기를 한두 문장으로 text에 적는다.
@@ -41,6 +42,7 @@ export const ANALYZE_TOOL: Anthropic.Tool = {
           existingId: { type: 'string' },
           newName: { type: 'string' },
           newSummary: { type: 'string' },
+          newColor: { type: 'string', description: '새 주제일 때만: 주제 뜻에 어울리는 부드러운 색 #rrggbb. 비슷한 주제는 비슷한 계열, 다른 주제는 확실히 다른 계열' },
         },
       },
       related: {

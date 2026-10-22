@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AnalyzeRequest, ReorganizeRequest } from '../../src/core/organize/types';
+import { normalizeTopicColor } from '../../src/core/palette';
 import { InvalidResultError, validateReorganize, validateResult } from '../../src/core/organize/validate';
 
 const req: AnalyzeRequest = {
@@ -85,5 +86,32 @@ describe('validateReorganize', () => {
     );
     expect(r.moves).toHaveLength(1);
     expect(validateReorganize({ topic: { name: 'x' }, moves: [{ memoId: 'a', to: { existingId: 'ghost' }, fit: 1 }, { memoId: 'a', to: { existingId: 'o' }, fit: 2 }] }, rr).moves).toEqual([]);
+  });
+});
+
+describe('newColor 검증', () => {
+  const withColor = (c: unknown) => validateResult({ ...good, topic: { newName: '새', newSummary: '', newColor: c } }, req).topic;
+  it('올바른 hex는 통과(팔레트 색은 그대로)', () => {
+    expect(withColor('#8EA9E8')).toEqual({ newName: '새', newSummary: '', newColor: '#8ea9e8' });
+  });
+  it('잘못된 값·없음은 newColor가 빠진다', () => {
+    expect(withColor('blue')).toEqual({ newName: '새', newSummary: '' });
+    expect(withColor(undefined)).toEqual({ newName: '새', newSummary: '' });
+  });
+  it('채도·명도가 범위 밖이면 부드럽게 맞춘다', () => {
+    const toHsl = (h: string) => {
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255) as [number, number, number];
+      const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+      return { s: mx === mn ? 0 : (mx - mn) / (1 - Math.abs(2 * l - 1)), l };
+    };
+    for (const c of ['#ff0000', '#000000', '#ffffff', '#101010', '#00ff00']) {
+      const { s, l } = toHsl(normalizeTopicColor(c)!);
+      expect(l).toBeGreaterThanOrEqual(0.54);
+      expect(l).toBeLessThanOrEqual(0.74);
+      expect(s).toBeLessThanOrEqual(0.74);
+      expect(s).toBeGreaterThanOrEqual(0.3);
+    }
+    expect(normalizeTopicColor('#ff0000')).not.toBe('#ff0000');
+    expect(normalizeTopicColor('#12')).toBeUndefined();
   });
 });

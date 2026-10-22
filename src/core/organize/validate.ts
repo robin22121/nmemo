@@ -1,3 +1,4 @@
+import { normalizeTopicColor } from '../palette.ts';
 import { MEMO_KINDS, type MemoKind } from '../types.ts';
 import {
   MAX_RELATED,
@@ -57,7 +58,8 @@ export function validateResult(raw: unknown, req: AnalyzeRequest): AnalyzeResult
   if (existingId && req.topics.some((t) => t.id === existingId)) {
     topic = { existingId };
   } else if (newName) {
-    topic = { newName: newName.slice(0, 24), newSummary: str(raw.topic.newSummary).slice(0, 60) };
+    const newColor = normalizeTopicColor(raw.topic.newColor);
+    topic = { newName: newName.slice(0, 24), newSummary: str(raw.topic.newSummary).slice(0, 60), ...(newColor ? { newColor } : {}) };
   } else {
     throw new InvalidResultError('topic을 알 수 없어요');
   }

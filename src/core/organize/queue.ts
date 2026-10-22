@@ -21,7 +21,7 @@ export async function buildRequest(repo: Repo, memo: Memo, readPhoto?: PhotoRead
   const topics = (await repo.listTopics())
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, MAX_TOPICS)
-    .map((t) => ({ id: t.id, name: t.name, summary: t.summary }));
+    .map((t) => ({ id: t.id, name: t.name, summary: t.summary, color: t.color }));
   const recent = (await repo.listMemosByStatus('organized'))
     .filter((m) => m.id !== memo.id)
     .sort((a, b) => b.createdAt - a.createdAt)

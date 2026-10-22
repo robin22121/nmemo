@@ -22,6 +22,15 @@ describe('applyResult', () => {
     expect((await repo.getTopic(out!.topicId))?.centerKeywords).toEqual(['카페']);
   });
 
+  it('newColor가 있으면 새 주제 색으로 쓰고, 없으면 팔레트에서 고른다', async () => {
+    await repo.addMemo(mkMemo({ id: 'm', status: 'pending' }));
+    const out = await applyResult(repo, 'm', { ...base, topic: { newName: '바다', newSummary: '', newColor: '#8ea9e8' } });
+    expect((await repo.getTopic(out!.topicId))?.color).toBe('#8ea9e8');
+    await repo.addMemo(mkMemo({ id: 'm2', status: 'pending' }));
+    const out2 = await applyResult(repo, 'm2', { ...base, topic: { newName: '산', newSummary: '' } });
+    expect((await repo.getTopic(out2!.topicId))?.color).toBe('#e8a87c');
+  });
+
   it('기존 주제에 붙으면 sinceReorg가 올라간다', async () => {
     await repo.addTopic(mkTopic({ id: 't', name: '카페' }));
     await repo.addMemo(mkMemo({ id: 'm', status: 'pending' }));
