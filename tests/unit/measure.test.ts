@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { fisheye, globeViewport } from '../../src/core/layout/globe';
-import { measureBoard } from '../../src/ui/globe/engine';
+import { boxOf, measureBoard } from '../../src/ui/globe/engine';
 
 // U1: 크기 0 측정이 NaN으로 번지지 않는다
 
@@ -31,5 +31,17 @@ describe('measureBoard: 0은 실패로 다룬다', () => {
     (globalThis as { window?: unknown }).window = { innerWidth: 390, innerHeight: 844 };
     expect(measureBoard(root(0, 0))).toEqual({ w: 390, h: 844 });
     expect(measureBoard(root(300, 600))).toEqual({ w: 300, h: 600 });
+  });
+});
+
+describe('boxOf: + 버튼 여백과 safe-area', () => {
+  it('아래 여백 = bottomPad(70) + inset, 위·좌우는 inset과 무관', () => {
+    const a = boxOf(390, 844);
+    const b = boxOf(390, 844, 34);
+    expect(a.bottom).toBe(844 / 2 - 70);
+    expect(b.bottom).toBe(844 / 2 - 70 - 34);
+    expect(b.top).toBe(a.top);
+    expect(b.left).toBe(a.left);
+    expect(b.right).toBe(a.right);
   });
 });

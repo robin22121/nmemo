@@ -1,4 +1,4 @@
-import { fisheye, focusExpansion, globeViewport, GLOBE, pitchAt, projectGlobe, snapYaw, topicOpacity, wrapDeg } from '../../core/layout/globe';
+import { fisheye, focusExpansion, globeViewport, GLOBE, pitchAt, projectGlobe, snapYaw, topicOpacity, wrapDeg, type RingBox } from '../../core/layout/globe';
 import { MOTION } from './config';
 
 export interface GlobeCard {
@@ -58,6 +58,11 @@ export function measureBoard(root: HTMLElement): { w: number; h: number } {
     w: firstPositive(root.clientWidth, r?.width, vv?.width, typeof window === 'undefined' ? 0 : window.innerWidth),
     h: firstPositive(root.clientHeight, r?.height, vv?.height, typeof window === 'undefined' ? 0 : window.innerHeight),
   };
+}
+
+/** 이름표를 화면 정가운데 둘 때 카드가 들어갈 화면 안 범위(이름표 중심 기준). 아래는 + 버튼 여백 + safe-area 아래 inset */
+export function boxOf(w: number, h: number, inset = 0): RingBox {
+  return { left: -w / 2 + 8, right: w / 2 - 8, top: -h / 2 + MOTION.topPad, bottom: h / 2 - MOTION.bottomPad - inset };
 }
 
 /** 크기 0 측정 뒤 다시 재는 최대 프레임 수 */

@@ -198,24 +198,27 @@
   .g-move-row { transition: none; }
 }
 
-/* 왼쪽 위 "⋯" 메뉴(Z4): 이름표처럼 종이빛 알약, 펼치면 주제 색이 은은하게 번진 둥근 판 */
-.g-menu-btn {
-  position: absolute; left: calc(14px + env(safe-area-inset-left, 0px)); top: calc(12px + env(safe-area-inset-top, 0px)); z-index: 22;
-  width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: var(--ink-soft);
-  background: rgba(255, 252, 245, 0.88); box-shadow: 0 1px 6px rgba(58, 50, 38, 0.1);
+/* 아래 가운데 "+"(D32): 종이빛 둥근 버튼, 마지막으로 읽던 주제 색이 은은히 번진다. 길게 누르면 메뉴 판이 위로 열린다 */
+.g-plus-btn {
+  --c: #c9c2b0;
+  position: absolute; left: 50%; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); z-index: 22; width: 52px; height: 52px; margin-left: -26px;
+  border-radius: 50%; display: grid; place-items: center; color: color-mix(in srgb, var(--c) 55%, var(--ink));
+  background: color-mix(in srgb, var(--c) 14%, rgba(255, 252, 245, 0.92));
+  box-shadow: 0 0 18px 4px color-mix(in srgb, var(--c) 28%, transparent), 0 1px 6px rgba(58, 50, 38, 0.12);
+  -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation;
 }
-.g-menu-btn::before { content: ''; position: absolute; inset: -6px; border-radius: 50%; }
-.g-menu-btn:active { transform: scale(0.92); }
-.g-menu-btn[aria-expanded='true'] { z-index: 48; color: var(--ink); background: color-mix(in srgb, var(--c, #c9c2b0) 18%, #fffdf8); }
+.g-plus-btn::before { content: ''; position: absolute; inset: -6px; border-radius: 50%; }
+.g-plus-btn svg { width: 24px; height: 24px; stroke-width: 2.2; }
+.g-plus-btn:active { transform: scale(0.92); }
 .g-menu-back { position: fixed; inset: 0; z-index: 46; }
 .g-menu {
   --c: #c9c2b0;
-  position: absolute; left: calc(14px + env(safe-area-inset-left, 0px)); top: calc(56px + env(safe-area-inset-top, 0px)); z-index: 47;
-  width: min(300px, calc(100% - 28px)); padding: 14px; border-radius: 28px; display: flex; flex-direction: column; gap: 8px; color: var(--ink);
+  position: absolute; left: 50%; bottom: calc(72px + env(safe-area-inset-bottom, 0px)); z-index: 47;
+  width: min(300px, calc(100% - 28px)); margin-left: calc(min(300px, calc(100% - 28px)) / -2); padding: 14px; border-radius: 28px; display: flex; flex-direction: column; gap: 8px; color: var(--ink);
   background: radial-gradient(ellipse at 30% 20%, color-mix(in srgb, var(--c) 16%, rgba(255, 253, 248, 0.95)) 0%, color-mix(in srgb, var(--c) 8%, rgba(255, 253, 248, 0.93)) 100%);
   -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
   box-shadow: 0 0 24px 6px color-mix(in srgb, var(--c) 16%, transparent), 0 10px 30px rgba(120, 96, 60, 0.14);
-  transform-origin: 18px -20px; animation: g-menu-in 0.2s cubic-bezier(.2, 1.3, .4, 1) both;
+  transform-origin: 50% 100%; animation: g-menu-in 0.2s cubic-bezier(.2, 1.3, .4, 1) both;
 }
 @keyframes g-menu-in { from { opacity: 0; transform: scale(0.85); } }
 .g-menu-row { display: flex; align-items: stretch; gap: 8px; }
@@ -234,3 +237,5 @@
 .g-menu-stats { margin: 4px 6px 2px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 13px; font-weight: 600; color: color-mix(in srgb, var(--c) 30%, var(--ink)); }
 .g-menu-diag { margin: 0 6px 2px; font-size: 11px; line-height: 1.4; color: var(--ink-soft); opacity: 0.7; word-break: keep-all; }
 @media (prefers-reduced-motion: reduce) { .g-menu { animation: none; } }
+
+.g-inset { position: absolute; left: 0; bottom: 0; width: 0; height: 0; padding-bottom: env(safe-area-inset-bottom, 0px); visibility: hidden; pointer-events: none; }

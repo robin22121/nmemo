@@ -1,9 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 
-// 왼쪽 위 "⋯" 메뉴(Z4): 내보내기·가져오기(Z3), 최근 7일 정돈 기록(Z5)
+// 아래 가운데 "+" 길게 누르기 메뉴(Z4, D32): 내보내기·가져오기(Z3), 최근 7일 정돈 기록(Z5)
 
 type KK = { __kk: { db: { memos: { update(id: string, p: object): Promise<number> } } } };
+
+/** + 버튼을 길게 눌러(liftMs 450ms) 메뉴 판을 연다 */
+async function openMenu(page: Page) {
+  const b = (await page.getByTestId('plus-button').boundingBox())!;
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.mouse.down();
+  await expect(page.getByTestId('menu-panel')).toBeVisible();
+  await page.mouse.up();
+}
 
 /** 정가운데 주제의 카드 하나를 길게 눌러 다른 주제 이름 위에 놓는다(D23) */
 async function moveFrontCard(page: Page, memoId: string) {
@@ -21,7 +30,7 @@ async function moveFrontCard(page: Page, memoId: string) {
   await expect(list).toHaveCount(0);
 }
 
-test('메뉴: 왼쪽 위 ⋯로 열리고, 정돈 기록이 있는 메모를 직접 옮기면 "직접 옮김"이 1 늘어난다', async ({ page }) => {
+test('메뉴: + 길게 누르면 열리고, 정돈 기록이 있는 메모를 직접 옮기면 "직접 옮김"이 1 늘어난다', async ({ page }) => {
   await page.goto('/?demo=1&reset=1&write=0');
   const board = page.getByTestId('board');
   await expect(board).toHaveAttribute('data-settled', '1');
@@ -33,26 +42,22 @@ test('메뉴: 왼쪽 위 ⋯로 열리고, 정돈 기록이 있는 메모를 직
     for (const id of mids) await db.memos.update(id, { organizedAt: Date.now() - 60_000 });
   }, ids);
 
-  const btn = page.getByTestId('menu-button');
-  const bb = (await btn.boundingBox())!;
-  expect(bb.x).toBeLessThan(40);
-  expect(bb.y).toBeLessThan(40);
-  await btn.click();
+  await openMenu(page);
   const stats = page.getByTestId('menu-stats');
   await expect(stats).toHaveText('최근 7일 정돈 2건 · 직접 옮김 0건(0%)');
   await expect(page.getByTestId('menu-panel')).toContainText('메신저');
-  await btn.click();
+  await page.mouse.click(20, 120); // 판 밖을 누르면 닫힘
   await expect(page.getByTestId('menu-panel')).toHaveCount(0);
 
   await moveFrontCard(page, ids[0]!);
   await expect(board).toHaveAttribute('data-settled', '1', { timeout: 8000 });
-  await page.getByTestId('menu-button').click();
+  await openMenu(page);
   await expect(stats).toHaveText('최근 7일 정돈 2건 · 직접 옮김 1건(50%)');
 });
 
 test('메뉴: 정돈 기록이 없으면 "—"', async ({ page }) => {
   await page.goto('/?demo=1&reset=1&write=0');
-  await page.getByTestId('menu-button').click();
+  await openMenu(page);
   await expect(page.getByTestId('menu-stats')).toHaveText('최근 7일 정돈 —');
 });
 
@@ -64,7 +69,7 @@ test('메뉴: 내보내기는 파일을 내려받고(공유 불가 환경), 그 
   await expect(info).toHaveAttribute('data-cards', '40');
   const clusters = (await info.getAttribute('data-clusters'))!;
 
-  await page.getByTestId('menu-button').click();
+  await openMenu(page);
   const exp = page.getByTestId('menu-export');
   await expect(exp).toBeEnabled();
   await expect(page.getByTestId('menu-export-size')).toHaveText(/^약 \d+(\.\d)?(KB|MB)$/);
@@ -79,14 +84,14 @@ test('메뉴: 내보내기는 파일을 내려받고(공유 불가 환경), 그 
   // 데모가 아닌 빈 DB(새 컨텍스트라 비어 있음)에 가져오기
   await page.goto('/?write=0');
   await expect(info).toHaveAttribute('data-cards', '0');
-  await page.getByTestId('menu-button').click();
+  await openMenu(page);
   await page.getByTestId('menu-import-input').setInputFiles(path);
   await expect(page.getByTestId('toast-text')).toContainText('메모 40개 추가');
   await expect(info).toHaveAttribute('data-cards', '40');
   await expect(info).toHaveAttribute('data-clusters', clusters);
 
   // 다시 가져오면 추가 0
-  await page.getByTestId('menu-button').click();
+  await openMenu(page);
   await page.getByTestId('menu-import-input').setInputFiles(path);
   await expect(page.getByTestId('toast-text')).toContainText('메모 0개 추가, 40개는 이미 있음');
   await expect(info).toHaveAttribute('data-cards', '40');
@@ -94,7 +99,7 @@ test('메뉴: 내보내기는 파일을 내려받고(공유 불가 환경), 그 
 
 test('메뉴: 끄적임 파일이 아니면 분명한 말로 거절한다', async ({ page }) => {
   await page.goto('/?demo=1&reset=1&write=0');
-  await page.getByTestId('menu-button').click();
+  await openMenu(page);
   await page.getByTestId('menu-import-input').setInputFiles({ name: 'x.json', mimeType: 'application/json', buffer: Buffer.from('{"hello":1}') });
   await expect(page.getByTestId('toast-text')).toHaveText('끄적임에서 내보낸 파일이 아니에요');
   await expect(page.getByTestId('board-info')).toHaveAttribute('data-cards', '40');

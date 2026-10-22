@@ -61,7 +61,9 @@ test('콜드 스타트 크기 0 측정: NaN 없이 그리고, 0이 풀리면 이
 test('메뉴: 진단 줄에 빌드 id와 크기가 보인다', async ({ page }) => {
   await page.goto('/?demo=1&write=0');
   await expect(page.getByTestId('board')).toHaveAttribute('data-settled', '1');
-  await page.getByTestId('menu-button').click();
+  const b = (await page.getByTestId('plus-button').boundingBox())!;
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.mouse.down();
   const diag = page.getByTestId('menu-diag');
   await expect(diag).toContainText(/빌드 \S+/);
   await expect(diag).toContainText('엔진 390×');

@@ -4,6 +4,8 @@ import { ImportError } from '../../core/exportImport';
 import { weeklyStats } from '../../core/stats';
 import { importBackup, prepareExport } from '../../db/backup';
 import { getDb } from '../../db/schema';
+import { PlusIcon } from '../icons';
+import { MOTION } from './config';
 
 function fmtSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))}KB`;
@@ -42,15 +44,23 @@ function diagLine(probe: Probe): string {
 type Probe = () => { root: HTMLElement | null; engine?: { w: number; h: number } };
 
 /**
- * 지구본 왼쪽 위 "⋯" → 메뉴(Z4): 내보내기(크기 표시, "사진 빼고"), 가져오기(합치기), 최근 7일 정돈 기록(Z5).
+ * 지구본 아래 가운데 둥근 "+"(D32): 누르면 주제 미정 쓰기 창, 길게 누르면 메뉴 판(Z4): 내보내기(크기 표시, "사진 빼고"), 가져오기(합치기), 최근 7일 정돈 기록(Z5).
  * 내보낼 파일은 메뉴를 열 때 미리 만들어 둔다 → 누르는 즉시 share를 불러 iOS의 사용자 동작 제한에 걸리지 않게.
  */
-export function GlobeMenu({ tint, notify, probe }: { tint?: string; notify: (m: string) => void; probe: Probe }) {
+export function GlobeMenu({ tint, notify, probe, onWrite }: { tint?: string; notify: (m: string) => void; probe: Probe; onWrite: (el: HTMLElement) => void }) {
   const [open, setOpen] = useState(false);
   const [withPhotos, setWithPhotos] = useState(true);
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  // 길게 누름(liftMs): 판이 열렸으면 뒤따르는 click(= 쓰기 창)은 삼킨다
+  const pressTimer = useRef(0);
+  const longFired = useRef(false);
+  const cancelPress = () => {
+    window.clearTimeout(pressTimer.current);
+    pressTimer.current = 0;
+  };
+  useEffect(() => cancelPress, []);
   const stats = useLiveQuery(async () => (open ? weeklyStats(await getDb().memos.toArray(), Date.now()) : null), [open], null);
 
   useEffect(() => {
@@ -111,18 +121,34 @@ export function GlobeMenu({ tint, notify, probe }: { tint?: string; notify: (m: 
     <>
       <button
         type="button"
-        className="g-menu-btn"
+        className="g-plus-btn"
         data-no-pan
-        data-testid="menu-button"
-        aria-label="메뉴"
+        data-testid="plus-button"
+        aria-label="새 메모 (길게 누르면 메뉴)"
         aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+        style={tint ? { ['--c' as string]: tint } : undefined}
+        onPointerDown={() => {
+          longFired.current = false;
+          cancelPress();
+          pressTimer.current = window.setTimeout(() => {
+            pressTimer.current = 0;
+            longFired.current = true;
+            setOpen(true);
+          }, MOTION.liftMs);
+        }}
+        onPointerUp={cancelPress}
+        onPointerCancel={cancelPress}
+        onPointerLeave={cancelPress}
+        onContextMenu={(e) => e.preventDefault()}
+        onClick={(e) => {
+          if (longFired.current) {
+            longFired.current = false;
+            return;
+          }
+          onWrite(e.currentTarget);
+        }}
       >
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden fill="currentColor">
-          <circle cx="5.5" cy="12" r="1.8" />
-          <circle cx="12" cy="12" r="1.8" />
-          <circle cx="18.5" cy="12" r="1.8" />
-        </svg>
+        <PlusIcon />
       </button>
       {open && (
         <>

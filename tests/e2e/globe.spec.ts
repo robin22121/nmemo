@@ -323,7 +323,18 @@ test('지구본: 열기와 닫기는 대칭 — 하늘에서 주제를 누르면
   await expect(board).toHaveAttribute('data-mode', 'sky');
 });
 
-test('지구본: 하늘 빈 곳 탭은 주제 미정 쓰기 창, 저장하면 주제·잠금 없는 대기 메모(D30)', async ({ page }) => {
+const emptySpot = (page: Page) =>
+  page.evaluate(() => {
+    const rects = [...document.querySelectorAll('.g-tag, .g-card, [data-more], [data-testid="topic-plus"], [data-testid="plus-button"]')].map((el) => el.getBoundingClientRect());
+    for (let y = 60; y < innerHeight - 60; y += 15)
+      for (let x = 30; x < innerWidth - 30; x += 15) {
+        const far = rects.every((r) => Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom)) > 24);
+        if (far && document.elementFromPoint(x, y)?.closest('.g-stage, .g-board')) return { x, y };
+      }
+    return null;
+  });
+
+test('지구본: 하늘 빈 곳 탭은 다시 정가운데 주제 펼치기(D32로 D30 취소)', async ({ page }) => {
   await page.goto('/?demo=1&reset=1&write=0');
   await expect(page.getByTestId('board-info')).toHaveAttribute('data-cards', '40');
   const board = page.getByTestId('board');
@@ -334,19 +345,32 @@ test('지구본: 하늘 빈 곳 탭은 주제 미정 쓰기 창, 저장하면 �
   await expect(board).toHaveAttribute('data-mode', 'focus');
   await tag.click();
   await expect(board).toHaveAttribute('data-mode', 'sky');
-  const spot = await page.evaluate(() => {
-    const rects = [...document.querySelectorAll('.g-tag, .g-card, [data-more], [data-testid="topic-plus"]')].map((el) => el.getBoundingClientRect());
-    for (let y = 60; y < innerHeight - 60; y += 15)
-      for (let x = 30; x < innerWidth - 30; x += 15) {
-        const far = rects.every((r) => Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom)) > 24);
-        if (far && document.elementFromPoint(x, y)?.closest('.g-stage, .g-board')) return { x, y };
-      }
-    return null;
-  });
+  const spot = await emptySpot(page);
   expect(spot).not.toBeNull();
   await page.mouse.click(spot!.x, spot!.y);
+  await expect(board).toHaveAttribute('data-mode', 'focus');
+  await expect(page.getByTestId('globe-composer')).toHaveCount(0);
+  // 집중 상태의 빈 곳 탭은 하늘로 접힘(D29)
+  const spot2 = await emptySpot(page);
+  await page.mouse.click(spot2!.x, spot2!.y);
+  await expect(board).toHaveAttribute('data-mode', 'sky');
+});
+
+test('지구본: 아래 가운데 + 탭은 주제 없는 쓰기 창, 저장하면 주제·잠금 없는 대기 메모. 지구본은 그대로(D32)', async ({ page }) => {
+  await page.goto('/?demo=1&reset=1&write=0');
+  await expect(page.getByTestId('board-info')).toHaveAttribute('data-cards', '40');
+  const board = page.getByTestId('board');
+  await expect(board).toHaveAttribute('data-settled', '1');
+  const mode = await board.getAttribute('data-mode');
+  const plus = page.getByTestId('plus-button');
+  const b = (await plus.boundingBox())!;
+  const vp = page.viewportSize()!;
+  expect(Math.abs(b.x + b.width / 2 - vp.width / 2)).toBeLessThan(2);
+  expect(b.y + b.height).toBeGreaterThan(vp.height - 90);
+  await plus.click();
   await expect(page.getByTestId('globe-composer')).toBeVisible();
   await expect(page.getByTestId('composer-topic')).toHaveCount(0);
+  await expect(page.getByTestId('plus-button')).toHaveCount(0);
   await page.getByTestId('globe-composer-input').fill('하늘에서 바로 적는 생각');
   await page.getByTestId('globe-send').click();
   await expect(page.getByTestId('globe-composer')).toHaveCount(0);
@@ -356,7 +380,33 @@ test('지구본: 하늘 빈 곳 탭은 주제 미정 쓰기 창, 저장하면 �
   });
   expect(m).toBeTruthy();
   expect(m.topicLocked).toBeFalsy();
-  // 대기 중이면 topicId가 없고, 이미 정돈됐어도 잠기지 않는다
+  await expect(board).toHaveAttribute('data-mode', 'focus'); // 저장하면 집중(기존 동작). + 탭 자체는 모드를 바꾸지 않음
+  expect(mode).toBeTruthy();
+});
+
+test('지구본: + 길게 누르면 메뉴 판(내보내기·가져오기·통계·진단), 밖을 누르면 닫힘. ⋯ 버튼은 없다(D32)', async ({ page }) => {
+  await page.goto('/?demo=1&reset=1&write=0');
+  await expect(page.getByTestId('board')).toHaveAttribute('data-settled', '1');
+  await expect(page.getByTestId('menu-button')).toHaveCount(0);
+  const board = page.getByTestId('board');
+  const mode = await board.getAttribute('data-mode');
+  const b = (await page.getByTestId('plus-button').boundingBox())!;
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.mouse.down();
+  const panel = page.getByTestId('menu-panel');
+  await expect(panel).toBeVisible();
+  await page.mouse.up();
+  await expect(page.getByTestId('globe-composer')).toHaveCount(0);
+  await expect(page.getByTestId('menu-export')).toBeVisible();
+  await expect(page.getByTestId('menu-import')).toBeVisible();
+  await expect(page.getByTestId('menu-stats')).toBeVisible();
+  await expect(page.getByTestId('menu-diag')).toBeVisible();
+  const pb = (await panel.boundingBox())!;
+  expect(pb.y + pb.height).toBeLessThanOrEqual(b.y);
+  await page.mouse.click(20, 120);
+  await expect(panel).toHaveCount(0);
+  await expect(page.getByTestId('plus-button')).toBeVisible();
+  await expect(board).toHaveAttribute('data-mode', mode!);
 });
 
 // D31: 보드 자전. 하늘 상태는 전체가, 집중 상태는 정면 주제만 제자리고 배경 주제가 천천히 돈다. 만지면 멈췄다 4초 뒤 다시

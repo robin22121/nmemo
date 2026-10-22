@@ -17,7 +17,7 @@ import { GlobeComposer } from './Composer';
 import { GlobeMenu } from './GlobeMenu';
 import { MOTION, WRITE_START } from './config';
 import { TopicListSheet } from './TopicListSheet';
-import { GlobeEngine, measureBoard, type GlobeItem } from './engine';
+import { boxOf, GlobeEngine, measureBoard, type GlobeItem } from './engine';
 import '../board.css';
 import './globe.css';
 
@@ -35,14 +35,10 @@ interface Cluster {
   count: number;
 }
 
-/** 이름표를 화면 정가운데 둘 때 카드가 들어갈 화면 안 범위(아래 여백 위까지). 보드 크기 기준 */
-function boxOf(w: number, h: number): RingBox {
-  return { left: -w / 2 + 8, right: w / 2 - 8, top: -h / 2 + MOTION.topPad, bottom: h / 2 - MOTION.bottomPad };
-}
 /** 0 측정이면 null: 호출한 쪽이 이전 값을 지킨다 */
-function ringBox(el?: HTMLElement | null): RingBox | null {
+function ringBox(el?: HTMLElement | null, inset = 0): RingBox | null {
   const { w, h } = el ? measureBoard(el) : { w: window.innerWidth, h: window.innerHeight };
-  return w && h ? boxOf(w, h) : null;
+  return w && h ? boxOf(w, h, inset) : null;
 }
 
 /** 정돈된 메모: 쓰기 칸 자리(대기 칩)에서 제 주제의 고리 칸으로 포물선 비행 */
@@ -136,6 +132,7 @@ export function GlobeBoard({
   const { topics, memos, links, layout, ready } = useBoardData();
   const reduced = !!useReducedMotion();
   const rootRef = useRef<HTMLDivElement>(null);
+  const insetRef = useRef<HTMLDivElement>(null);
   const engine = useRef<GlobeEngine | null>(null);
   const els = useRef(new Map<string, { el: HTMLElement | null; tag: HTMLElement | null }>());
   const cardEls = useRef(new Map<string, HTMLElement | null>());
@@ -176,7 +173,9 @@ export function GlobeBoard({
     let raf = 0;
     const on = (tries = 0) => {
       cancelAnimationFrame(raf);
-      const n = ringBox(rootRef.current);
+      // safe-area 아래 inset: 숨은 상자의 padding-bottom(env)을 읽는다(홈 표시줄이 있는 기기만 0이 아님)
+      const inset = parseFloat(getComputedStyle(insetRef.current!).paddingBottom) || 0;
+      const n = ringBox(rootRef.current, inset);
       if (!n) {
         // 0 측정(iOS 홈 화면 앱 콜드 스타트): 이전 값을 지키고 몇 프레임 뒤 다시 잰다
         if (tries < 60) raf = requestAnimationFrame(() => on(tries + 1));
@@ -257,15 +256,15 @@ export function GlobeBoard({
           }
           return;
         }
-        // 빈 곳: 하늘 → 주제 미정 쓰기 창(D30, 주제가 하나도 없을 때도 같다), 집중 → 하늘(D29)
-        if (noTopics.current || !focus) {
+        // 주제가 하나도 없으면 빈 곳 탭이 쓰기 창(집중할 주제가 없다)
+        if (noTopics.current) {
           setWriteTo({ topicId: null, origin: { x, y } });
           setWriting(true);
           return;
         }
-        // 집중 상태의 빈 곳: 메모가 이름표로 빨려 들어가고 다른 주제가 드러남
+        // 빈 곳: 집중 → 하늘(메모가 이름표로 빨려 들어가고 다른 주제가 드러남, D29), 하늘 → 가운데 주제에 다시 집중
         select.current(null);
-        e.setFocus(false);
+        e.setFocus(!focus);
       },
       onSettle: (front) => settled.current(front),
       onLift: (t, x, y) => liftH.current.lift(t, x, y),
@@ -498,6 +497,7 @@ export function GlobeBoard({
       data-write={writing ? '1' : undefined}
       data-blur={writing && MOTION.composerBlur ? '1' : undefined}
     >
+      <div ref={insetRef} className="g-inset" aria-hidden />
       <div className="g-stage">
         {clusters.map((c) => (
           <div key={c.topic.id} className="g-cluster" data-topic-id={c.topic.id} ref={reg(c.topic.id, 'el')} style={{ ['--c' as string]: c.topic.color }}>
@@ -616,7 +616,14 @@ export function GlobeBoard({
           />
         )}
       </AnimatePresence>
-      {!writing && !lift && <GlobeMenu probe={() => ({ root: rootRef.current, engine: engine.current?.size })} tint={topics.find((t) => t.id === lastTopic)?.color} notify={notify} />}
+      {!writing && !lift && !panelOpen && (
+        <GlobeMenu
+          probe={() => ({ root: rootRef.current, engine: engine.current?.size })}
+          tint={topics.find((t) => t.id === lastTopic)?.color}
+          notify={notify}
+          onWrite={(el) => openComposer(el, null)}
+        />
+      )}
       {ready && memos.length === 0 && <div className="empty-hint">떠오르는 걸 아무렇게나 던져보세요</div>}
       <span hidden data-testid="board-info" data-clusters={clusters.length} data-cards={memos.length} />
     </div>

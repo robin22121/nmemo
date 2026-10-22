@@ -37,8 +37,8 @@ export const MOTION = {
   composerBlur: false,
   /** 펼친 카드가 닿는 화면 위 여백(px). 아래는 입력 바 위 */
   topPad: 10,
-  /** 아래 여백(px) */
-  bottomPad: 72,
+  /** 아래 여백(px): + 버튼 8 + 52 + 틈 10. 여기에 기기의 safe-area-inset-bottom을 더한다 */
+  bottomPad: 70,
   /** 백그라운드에 이만큼 있다 돌아오면 다시 쓰기 모드(ms) */
   writeAgainAfter: 5 * 60 * 1000,
   /** 연달아 저장할 때 회전을 합치는 시간(ms): 이 안에 정돈된 메모는 마지막 주제로 한 번만 돈다 */
