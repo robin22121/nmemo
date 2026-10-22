@@ -175,8 +175,10 @@ export class GlobeEngine {
   }
 
   private kick() {
-    if (this.raf) return;
-    this.last = performance.now();
+    // 걸려 있는 프레임 요청은 다시 건다: 화면 크기가 바뀌는 사이에 요청이 실행되지 않고 사라지면
+    // raf가 0으로 안 돌아와 이후 kick이 모두 무시되고 화면이 옛 크기 자리에 굳는다
+    if (this.raf) cancelAnimationFrame(this.raf);
+    else this.last = performance.now();
     this.raf = requestAnimationFrame(this.frame);
   }
 

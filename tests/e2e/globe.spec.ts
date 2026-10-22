@@ -71,3 +71,26 @@ test('지구본: 가운데 주제 옆 +를 누르면 쓰기 칸이 열리고, �
   expect(m.topicId).toBe(topicId);
   expect(m.topicLocked).toBe(true);
 });
+
+test('지구본: 창 resize 이벤트 없이 보드 크기가 바뀌어도(iOS 웹뷰) 정가운데 주제가 화면 가운데에 온다', async ({ page }) => {
+  // 휴대폰 웹뷰가 임시 크기로 먼저 그린 뒤 실제 크기를 받는데 resize 이벤트가 오지 않는 경우를 흉내 낸다
+  await page.addInitScript(() => {
+    const add = window.addEventListener;
+    window.addEventListener = function (this: Window, type: string, ...rest: unknown[]) {
+      if (type === 'resize') return;
+      return (add as (...a: unknown[]) => void).call(this, type, ...rest);
+    } as typeof window.addEventListener;
+  });
+  await page.setViewportSize({ width: 780, height: 640 });
+  await page.goto('/?demo=1&reset=1&write=0');
+  const board = page.getByTestId('board');
+  await expect(board).toHaveAttribute('data-settled', '1');
+  await page.setViewportSize({ width: 375, height: 812 });
+  const center = async () =>
+    page.evaluate(() => {
+      const front = document.querySelector<HTMLElement>('[data-testid=board]')!.dataset.front;
+      const r = document.querySelector(`.g-cluster[data-topic-id="${front}"] .g-tag`)!.getBoundingClientRect();
+      return [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)];
+    });
+  await expect.poll(center).toEqual([188, 406]);
+});
