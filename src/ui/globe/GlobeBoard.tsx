@@ -240,14 +240,15 @@ export function GlobeBoard({
           }
           return;
         }
-        if (noTopics.current) {
+        // 빈 곳: 하늘 → 주제 미정 쓰기 창(D30, 주제가 하나도 없을 때도 같다), 집중 → 하늘(D29)
+        if (noTopics.current || !focus) {
           setWriteTo({ topicId: null, origin: { x, y } });
           setWriting(true);
           return;
         }
-        // 빈 곳: 집중 → 하늘(메모가 이름표로 빨려 들어가고 다른 주제가 드러남), 하늘 → 가운데 주제에 다시 집중
+        // 집중 상태의 빈 곳: 메모가 이름표로 빨려 들어가고 다른 주제가 드러남
         select.current(null);
-        e.setFocus(!focus);
+        e.setFocus(false);
       },
       onSettle: (front) => settled.current(front),
       onLift: (t, x, y) => liftH.current.lift(t, x, y),

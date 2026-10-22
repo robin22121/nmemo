@@ -322,3 +322,39 @@ test('지구본: 열기와 닫기는 대칭 — 하늘에서 주제를 누르면
   await page.mouse.click(spot!.x, spot!.y);
   await expect(board).toHaveAttribute('data-mode', 'sky');
 });
+
+test('지구본: 하늘 빈 곳 탭은 주제 미정 쓰기 창, 저장하면 주제·잠금 없는 대기 메모(D30)', async ({ page }) => {
+  await page.goto('/?demo=1&reset=1&write=0');
+  await expect(page.getByTestId('board-info')).toHaveAttribute('data-cards', '40');
+  const board = page.getByTestId('board');
+  await expect(board).toHaveAttribute('data-settled', '1');
+  const front = (await board.getAttribute('data-front'))!;
+  const tag = page.locator(`.g-cluster[data-topic-id="${front}"] .g-tag`);
+  if ((await board.getAttribute('data-mode')) !== 'focus') await tag.click();
+  await expect(board).toHaveAttribute('data-mode', 'focus');
+  await tag.click();
+  await expect(board).toHaveAttribute('data-mode', 'sky');
+  const spot = await page.evaluate(() => {
+    const rects = [...document.querySelectorAll('.g-tag, .g-card, [data-more], [data-testid="topic-plus"]')].map((el) => el.getBoundingClientRect());
+    for (let y = 60; y < innerHeight - 60; y += 15)
+      for (let x = 30; x < innerWidth - 30; x += 15) {
+        const far = rects.every((r) => Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom)) > 24);
+        if (far && document.elementFromPoint(x, y)?.closest('.g-stage, .g-board')) return { x, y };
+      }
+    return null;
+  });
+  expect(spot).not.toBeNull();
+  await page.mouse.click(spot!.x, spot!.y);
+  await expect(page.getByTestId('globe-composer')).toBeVisible();
+  await expect(page.getByTestId('composer-topic')).toHaveCount(0);
+  await page.getByTestId('globe-composer-input').fill('하늘에서 바로 적는 생각');
+  await page.getByTestId('globe-send').click();
+  await expect(page.getByTestId('globe-composer')).toHaveCount(0);
+  const m = await page.evaluate(async () => {
+    const { db } = (window as unknown as { __kk: { db: { memos: { toArray(): Promise<{ text: string; topicId?: string; topicLocked?: boolean }[]> } } } }).__kk;
+    return (await db.memos.toArray()).find((x) => x.text.startsWith('하늘에서 바로'))!;
+  });
+  expect(m).toBeTruthy();
+  expect(m.topicLocked).toBeFalsy();
+  // 대기 중이면 topicId가 없고, 이미 정돈됐어도 잠기지 않는다
+});
