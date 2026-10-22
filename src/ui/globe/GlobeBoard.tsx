@@ -30,9 +30,9 @@ interface Cluster {
   count: number;
 }
 
-/** 이름표를 화면 정가운데 둘 때 카드가 들어갈 화면 안 범위(아래 "새로 쓰기" 버튼 위까지) */
-function ringBox(): RingBox {
-  const w = window.innerWidth, h = window.innerHeight;
+/** 이름표를 화면 정가운데 둘 때 카드가 들어갈 화면 안 범위(아래 "새로 쓰기" 버튼 위까지). 보드 크기 기준 */
+function ringBox(el?: HTMLElement | null): RingBox {
+  const w = el?.clientWidth || window.innerWidth, h = el?.clientHeight || window.innerHeight;
   return { left: -w / 2 + 8, right: w / 2 - 8, top: -h / 2 + MOTION.topPad, bottom: h / 2 - MOTION.bottomPad };
 }
 
@@ -89,11 +89,21 @@ export function GlobeBoard({ onSelectMemo, notify }: { onSelectMemo: (memoId: st
   const select = useRef(onSelectMemo);
   select.current = onSelectMemo;
 
+  // 보드 자체 크기를 지켜본다. 인앱 브라우저(카카오톡 등)는 처음에 넓은 폭을 알렸다가 resize 이벤트 없이 줄어들기도 한다
   useEffect(() => {
-    const on = () => setBox(ringBox());
-    on(); // 입력 바가 그려진 뒤 다시 잰다
+    const on = () =>
+      setBox((cur) => {
+        const n = ringBox(rootRef.current);
+        return n.left === cur.left && n.top === cur.top && n.bottom === cur.bottom ? cur : n;
+      });
+    on();
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(on);
+    if (rootRef.current) ro?.observe(rootRef.current);
     window.addEventListener('resize', on);
-    return () => window.removeEventListener('resize', on);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', on);
+    };
   }, []);
 
   const clusters = useMemo<Cluster[]>(() => {
