@@ -89,6 +89,7 @@ export function App() {
             })
           }
           notify={notify}
+          panelOpen={!!selected}
         />
         <MemoSheet memoId={selected} onClose={() => setSelected(null)} onSelect={setSelected} notify={notify} />
         <Toast toast={toast} />

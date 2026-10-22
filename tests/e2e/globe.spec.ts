@@ -358,3 +358,53 @@ test('지구본: 하늘 빈 곳 탭은 주제 미정 쓰기 창, 저장하면 �
   expect(m.topicLocked).toBeFalsy();
   // 대기 중이면 topicId가 없고, 이미 정돈됐어도 잠기지 않는다
 });
+
+// D31: 보드 자전. 하늘 상태는 전체가, 집중 상태는 정면 주제만 제자리고 배경 주제가 천천히 돈다. 만지면 멈췄다 4초 뒤 다시
+async function openBoard(page: Page, mode: 'focus' | 'sky') {
+  await page.goto('/?demo=1&reset=1&write=0');
+  await expect(page.getByTestId('board-info')).toHaveAttribute('data-cards', '40');
+  const board = page.getByTestId('board');
+  await expect(board).toHaveAttribute('data-settled', '1');
+  if ((await board.getAttribute('data-mode')) !== mode) await page.locator(`.g-cluster[data-topic-id="${await board.getAttribute('data-front')}"] .g-tag`).click();
+  await expect(board).toHaveAttribute('data-mode', mode);
+  return board;
+}
+const phiOf = async (board: ReturnType<Page['getByTestId']>) => Number(await board.getAttribute('data-phi'));
+const transforms = (page: Page) => page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.g-cluster[data-topic-id]')].map((el) => [el.dataset.topicId!, el.style.transform] as const));
+
+test('지구본: 하늘 상태에서는 손대지 않아도 천천히 자전하고, 만진 뒤에는 멈췄다가 몇 초 뒤 다시 돈다(D31)', async ({ page }) => {
+  const board = await openBoard(page, 'sky');
+  await page.waitForTimeout(4600); // 탭 직후 4초는 쉰다
+  const a = await phiOf(board);
+  await page.waitForTimeout(1500);
+  const b = await phiOf(board);
+  expect(Math.abs(b - a)).toBeGreaterThan(1.5);
+  // 끌면 멈춘다(스냅이 끝난 뒤 값이 변하지 않는다)
+  await page.mouse.move(200, 400);
+  await page.mouse.down();
+  await page.mouse.move(150, 400, { steps: 5 });
+  await page.mouse.up();
+  await page.waitForTimeout(1500);
+  const c = await phiOf(board);
+  await page.waitForTimeout(1500);
+  expect(await phiOf(board)).toBe(c);
+  // 4초 넘게 가만히 두면 다시 돈다
+  await page.waitForTimeout(4000);
+  const d = await phiOf(board);
+  await page.waitForTimeout(1000);
+  expect(Math.abs((await phiOf(board)) - d)).toBeGreaterThan(0.5);
+});
+
+test('지구본: 집중 상태에서는 정면 주제와 펼친 카드는 제자리, 배경 주제만 천천히 돈다(D31)', async ({ page }) => {
+  const board = await openBoard(page, 'focus');
+  const front = (await board.getAttribute('data-front'))!;
+  await page.waitForTimeout(4600);
+  const t0 = await transforms(page);
+  await page.waitForTimeout(1500);
+  const t1 = await transforms(page);
+  const at = (t: typeof t0, id: string) => t.find((x) => x[0] === id)![1];
+  expect(at(t1, front)).toBe(at(t0, front));
+  expect(t1.some(([id, tr]) => id !== front && tr !== at(t0, id))).toBe(true);
+  await expect(board).toHaveAttribute('data-front', front);
+  await expect(board).toHaveAttribute('data-settled', '1');
+});

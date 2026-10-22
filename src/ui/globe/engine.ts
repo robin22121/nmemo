@@ -96,6 +96,13 @@ export class GlobeEngine {
   private last = 0;
   private settled = false;
   private wheelTimer = 0;
+  /** 배경 주제만 도는 각(°). 집중 상태에서 정면 주제는 φ에 고정되고 나머지는 φ+bg로 그려진다. 하늘·쓰기에서는 φ에 합친다 */
+  private bg = 0;
+  /** 손가락·휠을 마지막으로 댄 시각. 자전은 이후 autorotateResumeMs가 지나야 다시 간다 */
+  private idleAt = performance.now();
+  private held = false;
+  private paused = false;
+  private resumeTimer = 0;
   private state = new WeakMap<HTMLElement, { lod?: Lod; e: number; ls: number }>();
   private off: () => void;
 
@@ -108,6 +115,7 @@ export class GlobeEngine {
     cancelAnimationFrame(this.raf);
     cancelAnimationFrame(this.measureRaf);
     window.clearTimeout(this.wheelTimer);
+    window.clearTimeout(this.resumeTimer);
     this.off();
   }
 
@@ -150,8 +158,13 @@ export class GlobeEngine {
     this.kick();
   }
 
-  setMode(m: { write: boolean; reduced: boolean }) {
+  /** paused: 메모 패널·목록이 열려 있거나 카드를 들어 올린 동안 자전을 멈춘다 */
+  setMode(m: { write: boolean; reduced: boolean; paused?: boolean }) {
     const wasWrite = this.write;
+    if (m.write && this.bg) this.foldBg();
+    if (this.paused && !m.paused) this.idleAt = performance.now();
+    if (wasWrite && !m.write) this.idleAt = performance.now();
+    this.paused = !!m.paused;
     this.write = m.write;
     this.reduced = m.reduced;
     this.zoomTarget = m.write ? MOTION.writeZoom : 1;
@@ -175,6 +188,7 @@ export class GlobeEngine {
   /** 집중 ↔ 하늘. 하늘로 가면 카드가 이름표로 빨려 들어가고 다른 주제가 또렷해진다 */
   setFocus(on: boolean) {
     this.focus = on;
+    this.idleAt = performance.now();
     if (this.reduced) this.f = on ? 1 : 0;
     this.settled = false;
     this.kick();
@@ -195,6 +209,31 @@ export class GlobeEngine {
   }
 
   // ---------- 물리 ----------
+
+  private foldBg() {
+    this.phi += this.bg;
+    this.bg = 0;
+  }
+
+  private touch() {
+    this.idleAt = performance.now();
+  }
+
+  /** 보드(쓰기 아님) 자전을 지금 돌려도 되나 */
+  private canDrift(now: number): boolean {
+    return (
+      !this.reduced && !this.paused && !this.held && this.mode === 'idle' && this.items.length > 0 && now - this.idleAt >= MOTION.autorotateResumeMs
+    );
+  }
+
+  /** 자전이 쉬는 중이면 다시 갈 때 깨어나 프레임을 건다 */
+  private armResume() {
+    window.clearTimeout(this.resumeTimer);
+    this.resumeTimer = 0;
+    if (this.write || this.reduced || this.paused || this.held || this.mode !== 'idle' || !this.items.length || document.hidden) return;
+    const wait = this.idleAt + MOTION.autorotateResumeMs - performance.now();
+    if (wait > 0) this.resumeTimer = window.setTimeout(() => this.kick(), wait + 20);
+  }
 
   private release(v: number) {
     const v0 = Math.max(-MOTION.maxVel, Math.min(MOTION.maxVel, v));
@@ -225,6 +264,7 @@ export class GlobeEngine {
   private frame = (t: number) => {
     this.raf = 0;
     if (Number.isNaN(this.phi)) return; // 아직 주제가 없다
+    if (document.hidden) return; // 안 보이는 탭은 프레임을 걸지 않는다(배터리). 다시 보이면 onVisible이 깨운다
     const dt = Math.min(0.05, Math.max(0, (t - this.last) / 1000));
     this.last = t;
     let busy = this.mode === 'drag' || this.mode === 'wheel';
@@ -242,10 +282,23 @@ export class GlobeEngine {
         this.mode = 'idle';
       } else busy = true;
     }
-    if (this.write && !this.reduced && this.mode === 'idle') {
-      this.phi += MOTION.autorotate * dt;
-      busy = true;
+    let ambient = false;
+    if (this.bg && this.mode !== 'idle') {
+      // 직접 돌리기·스냅이 시작되면 배경 어긋남은 걷힌다(경도로 고르는 스냅과 눈에 보이는 자리를 맞춘다)
+      this.bg = wrapDeg(this.bg) * Math.exp(-8 * dt);
+      if (Math.abs(this.bg) < 0.05) this.bg = 0;
+      else busy = true;
     }
+    if (this.write && !this.reduced && this.mode === 'idle') {
+      this.bg += MOTION.autorotate * dt;
+      busy = true;
+    } else if (!this.write && this.canDrift(performance.now())) {
+      this.bg += MOTION.boardAutorotate * dt;
+      // 집중 상태의 정면 주제는 제자리: 배경만 도니 "멈춤"(D22 기록·스냅 판정)에는 세지 않는다. 하늘 상태는 전체가 도니 움직이는 중
+      if (this.focus && this.f === 1) ambient = true;
+      else busy = true;
+    }
+    if (this.bg && (this.write || this.f === 0)) this.foldBg();
     const ft = this.focus ? 1 : 0;
     if (this.f !== ft) {
       // 약 0.4초에 걸쳐 빨려 들어가기/터져 나오기
@@ -269,6 +322,8 @@ export class GlobeEngine {
     } else {
       delete this.root.dataset.moving;
       if (became) this.opts.onSettle?.(this.root.dataset.front || null);
+      if (ambient) this.raf = requestAnimationFrame(this.frame);
+      else this.armResume();
     }
   };
 
@@ -282,13 +337,15 @@ export class GlobeEngine {
     // f: 하늘(0) ↔ 집중(1). 카드는 f를 따라 빨려 들어가고/터져 나오고, 다른 주제 흐림(dimF)은 카드보다 늦게 걷히고 먼저 깔린다
     const f = this.f;
     const dimF = Math.min(1, f * 2) ** 2 * (3 - 2 * Math.min(1, f * 2));
-    const ps = this.items.map((it) => projectGlobe(it.lambda, it.beta, this.phi, this.theta, vp));
+    // 정면 주제(펼침 가중치 raw·f)는 φ에 고정, 나머지는 배경 자전 bg만큼 더 간다
+    const ps = this.items.map((it, i) => projectGlobe(it.lambda, it.beta, this.phi + this.bg * (1 - Math.min(1, raw[i]! * this.f)), this.theta, vp));
     let front = -1;
     let focusI = -1;
     ps.forEach((p, i) => {
       if (front < 0 || p.dist < ps[front]!.dist) front = i;
       if (raw[i]! > 0.5 && (focusI < 0 || raw[i]! > raw[focusI]!)) focusI = i;
     });
+    if (this.bg !== 0 && this.focus && this.f > 0.5 && focusI >= 0) front = focusI; // 도는 배경이 정면 자리를 지나가도 정면은 고정된 주제
     // 집중된 주제의 펼친 고리 영역(화면 좌표): 그 안에 겹치는 다른 주제는 더 흐리게
     const fr = focusI >= 0 ? this.items[focusI]!.ext : null;
     const fp = focusI >= 0 ? ps[focusI]! : null;
@@ -367,6 +424,8 @@ export class GlobeEngine {
       const target = e.target as Element;
       if (this.opts.shouldIgnore(target) || e.clientX < MOTION.edgeFree) return;
       pointer = { id: e.pointerId, x: e.clientX };
+      this.held = true;
+      this.touch();
       el.setPointerCapture?.(e.pointerId);
       gesture = 'pending';
       start = { x: e.clientX, y: e.clientY, t: performance.now() };
@@ -387,6 +446,7 @@ export class GlobeEngine {
       if (!pointer || pointer.id !== e.pointerId) return;
       const dx = e.clientX - pointer.x;
       pointer.x = e.clientX;
+      this.touch();
       // 들어 올린 카드를 끄는 중에는 지구본이 돌지 않는다
       if (gesture === 'lift') return this.opts.onDrag?.(e.clientX, e.clientY);
       if (gesture === 'pending') {
@@ -411,6 +471,8 @@ export class GlobeEngine {
     const up = (e: PointerEvent) => {
       if (!pointer || pointer.id !== e.pointerId) return;
       pointer = null;
+      this.held = false;
+      this.touch();
       const g = gesture;
       gesture = 'none';
       clearLift();
@@ -422,6 +484,8 @@ export class GlobeEngine {
     const cancel = (e: PointerEvent) => {
       if (!pointer || pointer.id !== e.pointerId) return;
       pointer = null;
+      this.held = false;
+      this.touch();
       if (gesture === 'lift') this.opts.onDragCancel?.();
       gesture = 'none';
       clearLift();
@@ -433,6 +497,7 @@ export class GlobeEngine {
       // 가로·세로 휠 모두 좌우 회전
       const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
       this.mode = 'wheel';
+      this.touch();
       this.vel = 0;
       this.settled = false;
       this.phi += d * MOTION.wheelDegPerPx;
@@ -446,7 +511,10 @@ export class GlobeEngine {
     const noMenu = (e: Event) => e.preventDefault();
     const onResize = () => this.resize();
     const onVisible = () => {
-      if (document.visibilityState === 'visible') this.resize();
+      if (document.visibilityState === 'visible') {
+        this.resize();
+        this.kick();
+      }
     };
     el.addEventListener('pointerdown', down);
     el.addEventListener('pointermove', move);
