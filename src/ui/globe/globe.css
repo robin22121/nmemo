@@ -153,6 +153,37 @@
 @keyframes g-breath { 50% { transform: scale(1.04); } }
 .g-flights { position: fixed; inset: 0; pointer-events: none; z-index: 20; overflow: hidden; }
 .g-card.g-incoming { visibility: hidden; }
+
+/* 길게 눌러 주제 옮기기(D23): 들어 올린 카드는 손가락을 따라오고, 원래 칸은 비워 둔다 */
+.g-card.g-lifted { visibility: hidden; }
+.g-lift { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
+.g-lift .face { box-shadow: 0 0 16px 5px color-mix(in srgb, var(--c) 22%, transparent), 0 12px 28px rgba(58, 50, 38, 0.16); }
+.g-lift[data-return='1'] { transition: transform 0.22s ease; }
+/* 오른쪽 위 주제 이름 목록: 주제 색이 은은하게 번진 알약. 많으면 줄이고 목록 안에서 흐른다 */
+.g-move {
+  position: absolute; right: 10px; top: calc(12px + env(safe-area-inset-top, 0px)); z-index: 21; max-width: 60%; max-height: calc(100% - 140px);
+  overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; padding: 6px 4px;
+  animation: g-move-in 0.18s ease-out both;
+}
+.g-move::-webkit-scrollbar { display: none; }
+@keyframes g-move-in { from { opacity: 0; transform: translateX(10px); } }
+.g-move-row {
+  flex: none; max-width: 100%; display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px; border-radius: 999px;
+  font-size: 14.5px; font-weight: 700; letter-spacing: -0.01em; color: color-mix(in srgb, var(--c) 45%, var(--ink));
+  background: color-mix(in srgb, var(--c) 12%, rgba(255, 252, 245, 0.94));
+  box-shadow: 0 0 8px 2px color-mix(in srgb, var(--c) 12%, transparent), 0 1px 6px rgba(58, 50, 38, 0.08);
+  transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.g-move-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.g-move-row i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+.g-move-row.over {
+  background: color-mix(in srgb, var(--c) 32%, #fffdf8);
+  box-shadow: 0 0 14px 5px color-mix(in srgb, var(--c) 32%, transparent), 0 2px 8px rgba(58, 50, 38, 0.1);
+  transform: scale(1.08); transform-origin: 100% 50%;
+}
+.g-move.compact { gap: 4px; }
+.g-move.compact .g-move-row { padding: 5px 11px; font-size: 13px; }
 @media (prefers-reduced-motion: reduce) {
-  .g-caret, .g-pchip, .g-choice { animation: none; }
+  .g-caret, .g-pchip, .g-choice, .g-move { animation: none; }
+  .g-move-row { transition: none; }
 }

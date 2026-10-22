@@ -117,3 +117,77 @@ test('지구본: 창 resize 이벤트 없이 보드 크기가 바뀌어도(iOS �
     });
   await expect.poll(center).toEqual([188, 406]);
 });
+
+type MemoRow = { id: string; topicId: string; topicLocked?: boolean };
+const memoOf = (page: Page, id: string) =>
+  page.evaluate(async (mid) => {
+    const { db } = (window as unknown as { __kk: { db: { memos: { get(id: string): Promise<MemoRow | undefined> } } } }).__kk;
+    const m = await db.memos.get(mid);
+    return m ? { topicId: m.topicId, topicLocked: !!m.topicLocked } : null;
+  }, id);
+
+/** 정가운데 주제의 첫 카드를 길게 눌러 들어 올린다 */
+async function liftFrontCard(page: Page) {
+  const board = page.getByTestId('board');
+  await expect(board).toHaveAttribute('data-settled', '1');
+  const front = (await board.getAttribute('data-front'))!;
+  const card = page.locator(`.g-cluster[data-topic-id="${front}"] [data-memo-id]`).first();
+  const memoId = (await card.getAttribute('data-memo-id'))!;
+  const b = (await card.locator('.card').boundingBox())!;
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  await page.mouse.down();
+  const list = page.getByTestId('move-topics');
+  await expect(list).toBeVisible();
+  return { board, front, memoId, list };
+}
+
+test('지구본: 카드를 길게 누르면 오른쪽 위에 다른 주제 이름이 뜨고, 이름 위에 놓으면 그 주제로 옮겨져 고정된다', async ({ page }) => {
+  await page.goto('/?demo=1&reset=1&write=0');
+  const { board, front, memoId, list } = await liftFrontCard(page);
+  const before = (await memoOf(page, memoId))!;
+  expect(before.topicId).toBe(front);
+  // 오른쪽 위, 자기 주제는 목록에 없다
+  const lb = (await list.boundingBox())!;
+  expect(lb.x + lb.width).toBeGreaterThan(375 - 30);
+  expect(lb.y).toBeLessThan(80);
+  await expect(list.locator(`[data-move-topic="${front}"]`)).toHaveCount(0);
+  await expect(page.getByTestId('lift-card')).toHaveCount(1);
+
+  const row = list.locator('[data-move-topic]').nth(1);
+  const target = (await row.getAttribute('data-move-topic'))!;
+  const rb = (await row.boundingBox())!;
+  await page.mouse.move(rb.x + rb.width / 2, rb.y + rb.height / 2, { steps: 12 });
+  await expect(row).toHaveClass(/over/);
+  // 끄는 동안 지구본은 돌지 않는다
+  expect(await board.getAttribute('data-front')).toBe(front);
+  await page.mouse.up();
+
+  await expect(list).toHaveCount(0);
+  await expect.poll(() => memoOf(page, memoId)).toEqual({ topicId: target, topicLocked: true });
+  // 새 주제로 돌아 그 고리에 내려앉는다
+  await expect(board).toHaveAttribute('data-front', target, { timeout: 5000 });
+  await expect(page.locator(`.g-cluster[data-topic-id="${front}"] [data-memo-id="${memoId}"]`)).toHaveCount(0);
+  await expect(page.getByTestId('flight-card')).toHaveCount(0, { timeout: 8000 });
+  await expect(page.getByTestId('lift-card')).toHaveCount(0);
+});
+
+test('지구본: 들어 올린 카드를 목록 밖에 놓으면 취소되고 주제는 그대로다', async ({ page }) => {
+  await page.goto('/?demo=1&reset=1&write=0');
+  const { board, front, memoId, list } = await liftFrontCard(page);
+  const before = (await memoOf(page, memoId))!;
+  await page.mouse.move(80, 600, { steps: 8 });
+  await expect(list.locator('.over')).toHaveCount(0);
+  await page.mouse.up();
+  await expect(list).toHaveCount(0);
+  await expect(page.getByTestId('lift-card')).toHaveCount(0, { timeout: 2000 });
+  expect(await memoOf(page, memoId)).toEqual(before);
+  expect(await board.getAttribute('data-front')).toBe(front);
+  // 원래 칸에 다시 보인다
+  await expect(page.locator(`.g-cluster[data-topic-id="${front}"] [data-memo-id="${memoId}"]`)).not.toHaveClass(/g-lifted/);
+  // 짧은 탭은 여전히 메모 상세를 연다
+  await expect(board).toHaveAttribute('data-settled', '1');
+  const b = (await page.locator(`[data-memo-id="${memoId}"] .card`).boundingBox())!;
+  await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+  await expect(page.getByTestId('sheet-text')).toBeVisible();
+  await expect(page.getByTestId('move-topics')).toHaveCount(0);
+});

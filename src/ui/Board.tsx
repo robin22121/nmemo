@@ -121,7 +121,7 @@ function FlightCard({ flight, onLand }: { flight: Flight; onLand: (f: Flight) =>
 
 /** 기본은 지구본 보드, `?globe=0`이면 기존 평면 보드 */
 export function Board(props: BoardProps) {
-  return GLOBE_ON ? <GlobeBoard onSelectMemo={props.onSelectMemo} notify={props.notify ?? (() => {})} /> : <FlatBoard {...props} />;
+  return GLOBE_ON ? <GlobeBoard onSelectMemo={props.onSelectMemo} onMoveToTopic={props.onMoveToTopic} notify={props.notify ?? (() => {})} /> : <FlatBoard {...props} />;
 }
 
 function FlatBoard({ selectedMemoId, openClusterId, onSelectMemo, onOpenCluster, onMoveToTopic, onMoveToNew }: BoardProps) {

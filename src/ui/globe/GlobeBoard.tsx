@@ -40,6 +40,9 @@ function ringBox(el?: HTMLElement | null): RingBox {
 /** 정돈된 메모: 쓰기 칸 자리(대기 칩)에서 제 주제의 고리 칸으로 포물선 비행 */
 interface Flight { id: string; memo: Memo; color?: string; from: { x: number; y: number }; to: { x: number; y: number }; scale: number }
 
+/** 길게 눌러 들어 올린 카드(D23). (x, y)는 손가락, (ox, oy)는 손가락 − 카드 중심, home은 원래 카드 중심 */
+interface Lift { id: string; memo: Memo; from: string; color?: string; x: number; y: number; ox: number; oy: number; home: { x: number; y: number }; scale: number; over: string | null; back?: boolean }
+
 /** 마지막으로 읽던 주제(= 마지막에 멈춘 정면 주제). 주제 없이 열린 쓰기 칸의 색. DB(데모)마다 따로 */
 const lastTopicKey = () => `kk.lastTopic.${getDb().name}`;
 function readLastTopic(): string | null {
@@ -85,7 +88,16 @@ function FlightCard({ f, onLand }: { f: Flight; onLand: (f: Flight) => void }) {
  * 좌우로 돌리면 시선 높이가 다가오는 주제를 따라간다. 정가운데 가까운 주제일수록 이름표 둘레로 카드가 연속으로 펼쳐진다.
  * 회전은 GlobeEngine이 DOM에 직접 쓰고, React는 데이터·화면 크기가 바뀔 때만 다시 그린다.
  */
-export function GlobeBoard({ onSelectMemo, notify }: { onSelectMemo: (memoId: string | null) => void; notify: (m: string) => void }) {
+export function GlobeBoard({
+  onSelectMemo,
+  onMoveToTopic,
+  notify,
+}: {
+  onSelectMemo: (memoId: string | null) => void;
+  /** 들어 올린 카드를 다른 주제 이름에 놓음(평면 보드의 끌어 옮기기와 같은 처리 → 직접 정한 것으로 고정) */
+  onMoveToTopic: (memoId: string, topicId: string) => void;
+  notify: (m: string) => void;
+}) {
   const { topics, memos, links, layout, ready } = useBoardData();
   const reduced = !!useReducedMotion();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -111,6 +123,12 @@ export function GlobeBoard({ onSelectMemo, notify }: { onSelectMemo: (memoId: st
   // 주제가 하나도 없으면 빈 곳 탭으로 쓰기 칸을 연다(+가 없어 쓸 길이 없어지지 않게)
   const noTopics = useRef(true);
   noTopics.current = topics.length === 0;
+  // 길게 눌러 주제 옮기기(D23): 들어 올린 카드, 그리고 옮긴 뒤 새 주제에 들어올 때까지 숨겨 둘 카드
+  const [lift, setLift] = useState<Lift | null>(null);
+  const liftRef = useRef(lift);
+  liftRef.current = lift;
+  const [moving, setMoving] = useState<{ id: string; topicId: string; from: { x: number; y: number } } | null>(null);
+  const moveListRef = useRef<HTMLDivElement>(null);
 
   // 보드 자체 크기를 지켜본다. 인앱 브라우저(카카오톡 등)는 처음에 넓은 폭을 알렸다가 resize 이벤트 없이 줄어들기도 한다
   useEffect(() => {
@@ -194,6 +212,10 @@ export function GlobeBoard({ onSelectMemo, notify }: { onSelectMemo: (memoId: st
         e.setFocus(!focus);
       },
       onSettle: (front) => settled.current(front),
+      onLift: (t, x, y) => liftH.current.lift(t, x, y),
+      onDrag: (x, y) => liftH.current.drag(x, y),
+      onDrop: (x, y) => liftH.current.drop(x, y),
+      onDragCancel: () => setLift(null),
     });
     engine.current = e;
     return () => {
@@ -298,6 +320,84 @@ export function GlobeBoard({ onSelectMemo, notify }: { onSelectMemo: (memoId: st
     if (fly.length) setFlights((cur) => [...cur, ...fly]);
   };
 
+  // 옮긴 메모가 새 주제에 들어오면 놓은 자리에서 제 칸으로 날아온다(정돈 비행을 그대로 쓴다)
+  useEffect(() => {
+    if (!moving) return;
+    if (memos.find((m) => m.id === moving.id)?.topicId === moving.topicId) {
+      // 새 주제 고리가 차서 점으로만 들어가면 날 칸이 없으니 그 주제로 돌기만 한다
+      if (cardEls.current.get(moving.id)) setIncoming((cur) => new Map(cur).set(moving.id, { topicId: moving.topicId, from: moving.from, at: Date.now() }));
+      else engine.current?.focusTo(moving.topicId);
+      setMoving(null);
+      return;
+    }
+    const t = window.setTimeout(() => setMoving(null), 3000);
+    return () => window.clearTimeout(t);
+  }, [moving, memos]);
+
+  /** 손가락 아래 주제 이름(오른쪽 위 목록). 이름이 짧아도 목록 폭 안이면 그 줄로 본다 */
+  const overTopic = (x: number, y: number): string | null => {
+    const list = moveListRef.current;
+    if (!list) return null;
+    const lr = list.getBoundingClientRect();
+    if (x < lr.left - 16 || y < lr.top || y > lr.bottom) return null;
+    for (const row of list.querySelectorAll<HTMLElement>('[data-move-topic]')) {
+      const r = row.getBoundingClientRect();
+      if (y >= r.top - 3 && y <= r.bottom + 3) return row.dataset.moveTopic ?? null;
+    }
+    return null;
+  };
+
+  const liftH = useRef<{ lift: (t: Element, x: number, y: number) => boolean; drag: (x: number, y: number) => void; drop: (x: number, y: number) => void }>({
+    lift: () => false,
+    drag: () => {},
+    drop: () => {},
+  });
+  liftH.current = {
+    // 집중 보기의 가운데 주제 카드만 들어 올린다(탭과 같은 범위). 옮겨 갈 다른 주제가 있어야 한다
+    lift: (t, x, y) => {
+      const root = rootRef.current;
+      if (!root || writing || !engine.current?.isFocus) return false;
+      const el = t.closest<HTMLElement>('[data-memo-id]');
+      const tid = t.closest('[data-topic-id]')?.getAttribute('data-topic-id');
+      if (!el || !tid || tid !== root.dataset.front) return false;
+      const memo = memos.find((m) => m.id === el.dataset.memoId);
+      if (!memo?.topicId || !topics.some((tp) => tp.id !== memo.topicId)) return false;
+      const b = (el.querySelector('.card') ?? el).getBoundingClientRect();
+      const home = { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+      const scale = Number(/scale\(([\d.]+)\)/.exec(el.style.transform)?.[1] ?? 1);
+      navigator.vibrate?.(12);
+      select.current(null);
+      setLift({ id: memo.id, memo, from: memo.topicId, color: topics.find((tp) => tp.id === memo.topicId)?.color, x, y, ox: x - home.x, oy: y - home.y, home, scale, over: null });
+      return true;
+    },
+    drag: (x, y) => {
+      // 주제가 많아 목록이 넘치면 위아래 끝에 대고 있을 때 목록이 흐른다
+      const list = moveListRef.current;
+      if (list && list.scrollHeight > list.clientHeight) {
+        const lr = list.getBoundingClientRect();
+        if (x >= lr.left - 16 && y < lr.top + 28) list.scrollTop -= 8;
+        else if (x >= lr.left - 16 && y > lr.bottom - 28) list.scrollTop += 8;
+      }
+      const over = overTopic(x, y);
+      setLift((cur) => (cur ? { ...cur, x, y, over } : cur));
+    },
+    drop: (x, y) => {
+      const l = liftRef.current;
+      if (!l) return;
+      const over = overTopic(x, y);
+      if (over && over !== l.from) {
+        setLift(null);
+        setMoving({ id: l.id, topicId: over, from: { x: x - l.ox, y: y - l.oy } });
+        onMoveToTopic(l.id, over);
+        return;
+      }
+      // 목록 밖: 취소, 카드는 제자리로 돌아간다
+      if (reduced) return setLift(null);
+      setLift({ ...l, x: l.home.x + l.ox, y: l.home.y + l.oy, over: null, back: true });
+      window.setTimeout(() => setLift((cur) => (cur?.id === l.id && cur.back ? null : cur)), 400);
+    },
+  };
+
   const onLand = useCallback(
     (f: Flight) => {
       setFlights((cur) => cur.filter((x) => x.id !== f.id));
@@ -345,7 +445,13 @@ export function GlobeBoard({ onSelectMemo, notify }: { onSelectMemo: (memoId: st
           <div key={c.topic.id} className="g-cluster" data-topic-id={c.topic.id} ref={reg(c.topic.id, 'el')} style={{ ['--c' as string]: c.topic.color }}>
             <div className="g-glow" />
             {c.cards.map(({ memo, dx, dy }) => (
-              <div key={memo.id} className={`g-card${incoming.has(memo.id) && !reduced ? ' g-incoming' : ''}`} data-memo-id={memo.id} ref={regCard(memo.id)} style={{ transform: `translate3d(${dx}px, ${dy}px, 0)` }}>
+              <div
+                key={memo.id}
+                className={`g-card${incoming.has(memo.id) && !reduced ? ' g-incoming' : ''}${lift?.id === memo.id || moving?.id === memo.id ? ' g-lifted' : ''}`}
+                data-memo-id={memo.id}
+                ref={regCard(memo.id)}
+                style={{ transform: `translate3d(${dx}px, ${dy}px, 0)` }}
+              >
                 <div className="card" style={{ transform: `translate(-50%, -50%) rotate(${cardTilt(memo)}deg)` }}>
                   <CardFace memo={memo} onToggleDone={(mid, d) => void setDone(mid, d)} />
                 </div>
@@ -390,7 +496,35 @@ export function GlobeBoard({ onSelectMemo, notify }: { onSelectMemo: (memoId: st
         {flights.map((f) => (
           <FlightCard key={f.id} f={f} onLand={onLand} />
         ))}
+        {lift && (
+          <div
+            className="g-lift"
+            data-testid="lift-card"
+            data-return={lift.back ? '1' : undefined}
+            style={{
+              ...(lift.color ? { ['--c' as string]: lift.color } : {}),
+              transform: `translate3d(${(lift.x - lift.ox).toFixed(1)}px, ${(lift.y - lift.oy).toFixed(1)}px, 0) scale(${(lift.scale * (lift.back ? 1 : 1.08)).toFixed(3)})`,
+            }}
+            onTransitionEnd={() => setLift((cur) => (cur?.back ? null : cur))}
+          >
+            <div className="card" style={{ transform: `translate(-50%, -50%) rotate(${cardTilt(lift.memo)}deg)` }}>
+              <CardFace memo={lift.memo} />
+            </div>
+          </div>
+        )}
       </div>
+      {lift && !lift.back && (
+        <div className={`g-move${topics.length > 9 ? ' compact' : ''}`} ref={moveListRef} data-testid="move-topics" aria-label="옮길 주제">
+          {topics
+            .filter((t) => t.id !== lift.from)
+            .map((t) => (
+              <div key={t.id} className={`g-move-row${lift.over === t.id ? ' over' : ''}`} data-move-topic={t.id} style={{ ['--c' as string]: t.color }}>
+                <i />
+                <span>{t.name}</span>
+              </div>
+            ))}
+        </div>
+      )}
       {!writing && pending.length > 0 && (
         <div className="g-pending" data-no-pan>
           {pending.map((m) => (

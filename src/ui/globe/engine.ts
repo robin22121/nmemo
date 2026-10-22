@@ -32,6 +32,11 @@ export interface EngineOptions {
   shouldIgnore: (target: Element) => boolean;
   /** 회전·전환이 멈췄을 때(정가운데 주제 id) */
   onSettle?: (frontId: string | null) => void;
+  /** liftMs 동안 가만히 누름. true를 돌려주면 들어 올림(끌기) 모드: 이후 움직임은 회전 대신 onDrag로 간다 */
+  onLift?: (target: Element, x: number, y: number) => boolean;
+  onDrag?: (x: number, y: number) => void;
+  onDrop?: (x: number, y: number) => void;
+  onDragCancel?: () => void;
 }
 
 type Lod = 'open' | 'dots' | 'label';
@@ -310,10 +315,15 @@ export class GlobeEngine {
   private bind(): () => void {
     const el = this.root;
     let pointer: { id: number; x: number } | null = null;
-    let gesture: 'none' | 'pending' | 'drag' = 'none';
+    let gesture: 'none' | 'pending' | 'drag' | 'lift' = 'none';
     let start = { x: 0, y: 0, t: 0 };
     let startTarget: Element | null = null;
     let lastMove = 0;
+    let liftTimer = 0;
+    const clearLift = () => {
+      window.clearTimeout(liftTimer);
+      liftTimer = 0;
+    };
 
     const down = (e: PointerEvent) => {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -325,6 +335,11 @@ export class GlobeEngine {
       gesture = 'pending';
       start = { x: e.clientX, y: e.clientY, t: performance.now() };
       startTarget = target;
+      clearLift();
+      liftTimer = window.setTimeout(() => {
+        liftTimer = 0;
+        if (gesture === 'pending' && startTarget && this.opts.onLift?.(startTarget, start.x, start.y)) gesture = 'lift';
+      }, MOTION.liftMs);
       // 도는 중에 잡으면 그 자리에서 멈춘다
       if (this.mode === 'spring') {
         this.mode = 'drag';
@@ -336,8 +351,11 @@ export class GlobeEngine {
       if (!pointer || pointer.id !== e.pointerId) return;
       const dx = e.clientX - pointer.x;
       pointer.x = e.clientX;
+      // 들어 올린 카드를 끄는 중에는 지구본이 돌지 않는다
+      if (gesture === 'lift') return this.opts.onDrag?.(e.clientX, e.clientY);
       if (gesture === 'pending') {
         if (Math.hypot(e.clientX - start.x, e.clientY - start.y) <= MOTION.tapSlop) return;
+        clearLift();
         gesture = 'drag';
         this.mode = 'drag';
         this.vel = 0;
@@ -359,6 +377,8 @@ export class GlobeEngine {
       pointer = null;
       const g = gesture;
       gesture = 'none';
+      clearLift();
+      if (g === 'lift') this.opts.onDrop?.(e.clientX, e.clientY);
       if (g === 'pending' && performance.now() - start.t < 600 && startTarget) this.opts.onTap(startTarget, e.clientX, e.clientY);
       if (this.mode === 'drag') this.release(performance.now() - lastMove > 90 ? 0 : this.vel);
     };
@@ -366,7 +386,9 @@ export class GlobeEngine {
     const cancel = (e: PointerEvent) => {
       if (!pointer || pointer.id !== e.pointerId) return;
       pointer = null;
+      if (gesture === 'lift') this.opts.onDragCancel?.();
       gesture = 'none';
+      clearLift();
       if (this.mode === 'drag') this.release(0);
     };
 
@@ -399,6 +421,7 @@ export class GlobeEngine {
     const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(onResize);
     ro?.observe(el);
     return () => {
+      clearLift();
       ro?.disconnect();
       el.removeEventListener('pointerdown', down);
       el.removeEventListener('pointermove', move);
