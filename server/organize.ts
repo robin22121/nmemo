@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { MAX_MEMBERS, MAX_RECENT, MAX_TOPICS } from '../src/core/organize/types';
-import type { AnalyzeRequest, AnalyzeResult, ReorganizeRequest, ReorganizeResult } from '../src/core/organize/types';
-import { InvalidResultError, validateReorganize, validateResult } from '../src/core/organize/validate';
+import { MAX_MEMBERS, MAX_RECENT, MAX_TOPICS } from '../src/core/organize/types.ts';
+import type { AnalyzeRequest, AnalyzeResult, ReorganizeRequest, ReorganizeResult } from '../src/core/organize/types.ts';
+import { InvalidResultError, validateReorganize, validateResult } from '../src/core/organize/validate.ts';
 import {
   ANALYZE_TOOL,
   REORGANIZE_SYSTEM_PROMPT,
@@ -9,7 +9,7 @@ import {
   SYSTEM_PROMPT,
   buildAnalyzeContent,
   buildReorganizeContent,
-} from './prompt';
+} from './prompt.ts';
 
 export const MODEL = 'claude-haiku-5-5';
 

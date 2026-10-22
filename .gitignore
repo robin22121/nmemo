@@ -9,3 +9,4 @@ playwright-report
 functions/node_modules
 functions/lib
 dist-artifact
+.vercel

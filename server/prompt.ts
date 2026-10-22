@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { MAX_MEMBERS, MAX_RECENT, MAX_TOPICS, type AnalyzeRequest, type ReorganizeRequest } from '../src/core/organize/types';
+import { MAX_MEMBERS, MAX_RECENT, MAX_TOPICS, type AnalyzeRequest, type ReorganizeRequest } from '../src/core/organize/types.ts';
 
 export const SYSTEM_PROMPT = `너는 짧은 메모를 정돈하는 도우미다.
 - 메모의 특성(종류·감정·키워드·한 줄 요약)을 파악한다.

@@ -1,4 +1,4 @@
-import { MEMO_KINDS, type MemoKind } from '../types';
+import { MEMO_KINDS, type MemoKind } from '../types.ts';
 import {
   MAX_RELATED,
   MAX_SUMMARY,
@@ -6,7 +6,7 @@ import {
   type AnalyzeResult,
   type ReorganizeRequest,
   type ReorganizeResult,
-} from './types';
+} from './types.ts';
 
 export class InvalidResultError extends Error {
   constructor(message: string) {
