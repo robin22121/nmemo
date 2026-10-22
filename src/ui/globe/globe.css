@@ -61,6 +61,17 @@
 .g-board .face.emotion { width: 72px; height: 72px; padding: 6px; }
 .g-board .face.emotion .face-text { font-size: 12px; -webkit-line-clamp: 3; line-clamp: 3; }
 .g-board .face.photo .face-text, .g-board .face.todo .face-text { font-size: 14px; }
+/* 사각 쪽지 대신 주제 둘레 빛(.g-glow)처럼: 그 주제 색(--c)이 은은하게 번진 둥근 모양. 글자는 잉크색 그대로(대비 유지).
+   감정 카드는 이미 감정 색 번짐 원형이라 그대로 둔다 */
+.g-board .face.idea, .g-board .face.todo, .g-board .face.photo {
+  border: 0; border-radius: 30px;
+  background: radial-gradient(ellipse at 50% 40%, color-mix(in srgb, var(--c) 20%, #fffdf8) 0%, color-mix(in srgb, var(--c) 13%, #fffdf8) 60%, color-mix(in srgb, var(--c) 9%, rgba(255, 253, 248, 0.82)) 100%);
+  box-shadow: 0 0 10px 3px color-mix(in srgb, var(--c) 16%, transparent), 0 4px 14px rgba(58, 50, 38, 0.07);
+}
+.g-board .face.idea { padding: 12px 14px 13px; }
+.g-board .face.idea::after { display: none; }
+.g-board .face.photo { border-radius: 999px; }
+.g-board .face.todo .todo-check { border-color: color-mix(in srgb, var(--c) 45%, #8a7f6b); }
 
 /* 주제 옆 동그란 +: 펼친(정가운데) 주제에만. 누르면 여기서 쓰기 칸이 커지며 열린다 */
 .g-tag-plus {
@@ -84,10 +95,16 @@
   padding: calc(16px + env(safe-area-inset-top, 0px)) 16px calc(16px + var(--safe-b));
 }
 .g-composer {
-  pointer-events: auto; width: 100%; max-width: 440px; display: flex; flex-direction: column; border-radius: 26px;
-  background: rgba(255, 253, 248, 0.82); -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2);
-  border: 1px solid rgba(255, 255, 255, 0.75);
-  box-shadow: 0 1px 2px rgba(58, 50, 38, 0.06), 0 12px 40px rgba(120, 96, 60, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  pointer-events: auto; width: 100%; max-width: 440px; display: flex; flex-direction: column; border-radius: 44px;
+  /* 사각 유리 대신 주제 둘레 빛처럼: 주제 색(--c, 없으면 마지막으로 읽던 주제 색)이 가운데서 은은하게 번진다 */
+  background: radial-gradient(ellipse at 50% 38%, color-mix(in srgb, var(--c) 16%, rgba(255, 253, 248, 0.9)) 0%, color-mix(in srgb, var(--c) 10%, rgba(255, 253, 248, 0.86)) 55%, color-mix(in srgb, var(--c) 6%, rgba(255, 253, 248, 0.8)) 100%);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2);
+  box-shadow: 0 0 36px 10px color-mix(in srgb, var(--c) 18%, transparent), 0 14px 44px rgba(120, 96, 60, 0.12);
+}
+/* 주제가 하나도 없을 때(색 없음): 기본 종이빛 */
+.g-composer:not([data-tint]) {
+  background: rgba(255, 253, 248, 0.82);
+  box-shadow: 0 1px 2px rgba(58, 50, 38, 0.06), 0 12px 40px rgba(120, 96, 60, 0.16);
 }
 .g-composer-topic {
   align-self: flex-start; margin: 14px 0 0 16px; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px;
@@ -125,19 +142,6 @@
 .g-send:disabled { background: rgba(239, 232, 217, 0.9); color: rgba(122, 111, 93, 0.55); box-shadow: none; }
 .g-send:not(:disabled):active { transform: scale(0.92); }
 .g-send svg { width: 20px; height: 20px; }
-/* 새로 쓰기: 보드 위에 떠 있는 종이빛 유리 알약 */
-.g-pen {
-  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(18px + var(--safe-b)); z-index: 3;
-  display: inline-flex; align-items: center; gap: 7px; padding: 12px 22px; border-radius: 999px;
-  color: var(--ink); font-size: 15px; font-weight: 600;
-  background: rgba(255, 253, 248, 0.78); -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2);
-  border: 1px solid rgba(255, 255, 255, 0.8); box-shadow: 0 1px 2px rgba(58, 50, 38, 0.06), 0 8px 24px rgba(120, 96, 60, 0.16);
-  animation: g-rise 0.3s ease both;
-}
-.g-pen:active { transform: translateX(-50%) scale(0.96); }
-@keyframes g-rise { from { opacity: 0; transform: translate(-50%, 8px); } }
-.g-pen svg { width: 18px; height: 18px; color: var(--ink-soft); }
-
 /* 정돈 대기 칩(쓰기 칸이 있던 위쪽 가운데) → 정돈되면 여기서 제 주제로 날아간다 */
 .g-pending { position: absolute; left: 0; right: 0; top: calc(14px + env(safe-area-inset-top, 0px)); z-index: 4; display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; padding: 0 16px; pointer-events: none; }
 .g-pchip {
@@ -150,5 +154,5 @@
 .g-flights { position: fixed; inset: 0; pointer-events: none; z-index: 20; overflow: hidden; }
 .g-card.g-incoming { visibility: hidden; }
 @media (prefers-reduced-motion: reduce) {
-  .g-caret, .g-pchip, .g-choice, .g-pen { animation: none; }
+  .g-caret, .g-pchip, .g-choice { animation: none; }
 }

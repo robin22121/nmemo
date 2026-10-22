@@ -30,7 +30,7 @@ export const MOTION = {
   composerBlur: false,
   /** 펼친 카드가 닿는 화면 위 여백(px). 아래는 입력 바 위 */
   topPad: 10,
-  /** 아래 여백(px): "새로 쓰기" 버튼 자리 */
+  /** 아래 여백(px) */
   bottomPad: 72,
   /** 백그라운드에 이만큼 있다 돌아오면 다시 쓰기 모드(ms) */
   writeAgainAfter: 5 * 60 * 1000,

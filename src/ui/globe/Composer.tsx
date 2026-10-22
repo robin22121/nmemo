@@ -17,6 +17,8 @@ interface Props {
   notify: (m: string) => void;
   /** 주제 옆 +로 열었으면 그 주제(저장하면 그 주제에 고정) */
   topic?: Topic | null;
+  /** 주제 없이 열렸을 때의 색(마지막으로 읽던 주제 색). 없으면 기본색 */
+  tint?: string;
   /** 열고 닫힐 때 커지고 줄어드는 기준점(누른 버튼의 화면 중심). 없으면 제자리에서 */
   origin?: { x: number; y: number } | null;
 }
@@ -25,9 +27,9 @@ interface Props {
  * 바로 쓰기(§3.4): 정면에 큰 쓰기 칸, 뒤에는 반투명 덮개 너머로 지구본이 천천히 돈다.
  * 데스크톱은 첫 키 입력이 바로 들어오고, iOS는 가짜 커서를 그려 두고 한 번 탭하면 입력이 시작된다.
  * + → [녹음](누르고 있는 동안 듣기) [사진]. 저장은 기존 경로(addMemo → pending → 대기열 깨우기) 후 쓰기 칸이 닫힌다(D6).
- * 쓰기 칸은 화면 정가운데. 누른 버튼(새로 쓰기·주제 옆 +) 자리에서 커지며 열리고 그 자리로 줄어들며 닫힌다(AnimatePresence).
+ * 쓰기 칸은 화면 정가운데. 누른 버튼(주제 옆 +) 자리에서 커지며 열리고 그 자리로 줄어들며 닫힌다(AnimatePresence).
  */
-export function GlobeComposer({ draft, onDraft, onSaved, onDismiss, notify, topic, origin }: Props) {
+export function GlobeComposer({ draft, onDraft, onSaved, onDismiss, notify, topic, tint, origin }: Props) {
   const reduced = !!useReducedMotion();
   const textRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -134,7 +136,8 @@ export function GlobeComposer({ draft, onDraft, onSaved, onDismiss, notify, topi
           className="g-composer"
           data-no-pan
           data-testid="globe-composer"
-          style={{ ['--c' as string]: topic?.color ?? 'var(--ink)' }}
+          data-tint={topic || tint ? '1' : undefined}
+          style={{ ['--c' as string]: topic?.color ?? tint ?? 'var(--ink)' }}
           initial={hidden}
           animate={{ x: 0, y: 0, scale: 1, opacity: 1 }}
           exit={{ ...hidden, transition: { duration: 0.22, ease: [0.4, 0, 1, 1] } }}

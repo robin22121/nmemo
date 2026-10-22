@@ -2,12 +2,13 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GLOBE, pickShown, placeTopics, ringCapacity, ringLayout, type RingBox } from '../../core/layout/globe';
 import { setDone } from '../../db/repo';
+import { getDb } from '../../db/schema';
 import type { Memo, Topic } from '../../db/schema';
 import { motionBus } from '../../motion/bus';
 import { arcKeyframes, FLIGHT_SECONDS } from '../../motion/presets';
 import { getQueue } from '../../organize/runtime';
 import { usePending } from '../hooks';
-import { PenIcon, PlusIcon } from '../icons';
+import { PlusIcon } from '../icons';
 import { CardFace, cardText, cardTilt } from '../MemoCard';
 import { useBoardData } from '../useBoardData';
 import { GlobeComposer } from './Composer';
@@ -30,14 +31,31 @@ interface Cluster {
   count: number;
 }
 
-/** 이름표를 화면 정가운데 둘 때 카드가 들어갈 화면 안 범위(아래 "새로 쓰기" 버튼 위까지). 보드 크기 기준 */
+/** 이름표를 화면 정가운데 둘 때 카드가 들어갈 화면 안 범위(아래 여백 위까지). 보드 크기 기준 */
 function ringBox(el?: HTMLElement | null): RingBox {
   const w = el?.clientWidth || window.innerWidth, h = el?.clientHeight || window.innerHeight;
   return { left: -w / 2 + 8, right: w / 2 - 8, top: -h / 2 + MOTION.topPad, bottom: h / 2 - MOTION.bottomPad };
 }
 
 /** 정돈된 메모: 쓰기 칸 자리(대기 칩)에서 제 주제의 고리 칸으로 포물선 비행 */
-interface Flight { id: string; memo: Memo; from: { x: number; y: number }; to: { x: number; y: number }; scale: number }
+interface Flight { id: string; memo: Memo; color?: string; from: { x: number; y: number }; to: { x: number; y: number }; scale: number }
+
+/** 마지막으로 읽던 주제(= 마지막에 멈춘 정면 주제). 주제 없이 열린 쓰기 칸의 색. DB(데모)마다 따로 */
+const lastTopicKey = () => `kk.lastTopic.${getDb().name}`;
+function readLastTopic(): string | null {
+  try {
+    return localStorage.getItem(lastTopicKey());
+  } catch {
+    return null;
+  }
+}
+function writeLastTopic(id: string) {
+  try {
+    localStorage.setItem(lastTopicKey(), id);
+  } catch {
+    // 저장소를 못 쓰면 이번 실행에서만 기억
+  }
+}
 
 function FlightCard({ f, onLand }: { f: Flight; onLand: (f: Flight) => void }) {
   const kf = arcKeyframes(f.from, f.to, 150, 0.42);
@@ -45,6 +63,7 @@ function FlightCard({ f, onLand }: { f: Flight; onLand: (f: Flight) => void }) {
     <motion.div
       className="flight-card"
       data-testid="flight-card"
+      style={f.color ? { ['--c' as string]: f.color } : undefined}
       initial={{ x: f.from.x, y: f.from.y, scale: 0.9 }}
       animate={{ x: kf.x, y: kf.y, scale: [0.9, 1.1, f.scale] }}
       transition={{
@@ -88,6 +107,10 @@ export function GlobeBoard({ onSelectMemo, notify }: { onSelectMemo: (memoId: st
   const [listTopic, setListTopic] = useState<string | null>(null);
   const select = useRef(onSelectMemo);
   select.current = onSelectMemo;
+  const [lastTopic, setLastTopic] = useState<string | null>(readLastTopic);
+  // 주제가 하나도 없으면 빈 곳 탭으로 쓰기 칸을 연다(+가 없어 쓸 길이 없어지지 않게)
+  const noTopics = useRef(true);
+  noTopics.current = topics.length === 0;
 
   // 보드 자체 크기를 지켜본다. 인앱 브라우저(카카오톡 등)는 처음에 넓은 폭을 알렸다가 resize 이벤트 없이 줄어들기도 한다
   useEffect(() => {
@@ -159,6 +182,11 @@ export function GlobeBoard({ onSelectMemo, notify }: { onSelectMemo: (memoId: st
           // 이름표: 하늘 보기면 그 주제로 돌며 메모가 터져 나오고, 집중 보기면 그 주제로 돌아 집중
           if (!focus) e.focusTo(best.id);
           else if (best.id !== front) e.rotateTo(best.id);
+          return;
+        }
+        if (noTopics.current) {
+          setWriteTo({ topicId: null, origin: { x, y } });
+          setWriting(true);
           return;
         }
         // 빈 곳: 집중 → 하늘(메모가 이름표로 빨려 들어가고 다른 주제가 드러남), 하늘 → 가운데 주제에 다시 집중
@@ -246,6 +274,10 @@ export function GlobeBoard({ onSelectMemo, notify }: { onSelectMemo: (memoId: st
   // 회전이 멈추면: 정가운데 주제로 들어올 메모는 대기 칩 자리에서 제 칸으로 날고, 다른 주제 것은 그냥 보인다
   const settled = useRef<(front: string | null) => void>(() => {});
   settled.current = (front) => {
+    if (front && !writing && front !== lastTopic) {
+      setLastTopic(front);
+      writeLastTopic(front);
+    }
     const ready = [...incomingRef.current.entries()].filter(([id]) => cardEls.current.get(id));
     if (!ready.length || reduced) return;
     const fly: Flight[] = [];
@@ -260,7 +292,7 @@ export function GlobeBoard({ onSelectMemo, notify }: { onSelectMemo: (memoId: st
       }
       const r = el.getBoundingClientRect();
       const sc = Number(/scale\(([\d.]+)\)/.exec(el.style.transform)?.[1] ?? 1);
-      fly.push({ id, memo, from: v.from ?? { x: window.innerWidth / 2, y: 90 }, to: { x: r.left + r.width / 2, y: r.top + r.height / 2 }, scale: sc });
+      fly.push({ id, memo, color: topics.find((t) => t.id === v.topicId)?.color, from: v.from ?? { x: window.innerWidth / 2, y: 90 }, to: { x: r.left + r.width / 2, y: r.top + r.height / 2 }, scale: sc });
     }
     reveal(show);
     if (fly.length) setFlights((cur) => [...cur, ...fly]);
@@ -384,17 +416,13 @@ export function GlobeBoard({ onSelectMemo, notify }: { onSelectMemo: (memoId: st
             onDraft={setDraft}
             notify={notify}
             topic={topics.find((t) => t.id === writeTo.topicId) ?? null}
+            tint={topics.find((t) => t.id === lastTopic)?.color}
             origin={writeTo.origin}
             onSaved={() => closeComposer(true)}
             onDismiss={() => closeComposer(false)}
           />
         )}
       </AnimatePresence>
-      {!writing && (
-        <button type="button" className="g-pen" data-no-pan data-testid="globe-write" onClick={(e) => openComposer(e.currentTarget, null)}>
-          <PenIcon /> 새로 쓰기
-        </button>
-      )}
       {ready && memos.length === 0 && <div className="empty-hint">떠오르는 걸 아무렇게나 던져보세요</div>}
       <span hidden data-testid="board-info" data-clusters={clusters.length} data-cards={memos.length} />
     </div>
