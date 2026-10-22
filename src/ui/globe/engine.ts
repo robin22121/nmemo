@@ -1,4 +1,4 @@
-import { fisheye, focusExpansion, globeViewport, GLOBE, pitchAt, projectGlobe, snapYaw, topicOpacity, wrapDeg, type RingBox } from '../../core/layout/globe';
+import { fisheye, focusExpansion, globeViewport, GLOBE, pitchAt, projectGlobe, topicOpacity, wrapDeg, type RingBox } from '../../core/layout/globe';
 import { MOTION } from './config';
 
 export interface GlobeCard {
@@ -65,6 +65,58 @@ export function boxOf(w: number, h: number, inset = 0): RingBox {
   return { left: -w / 2 + 8, right: w / 2 - 8, top: -h / 2 + MOTION.topPad, bottom: h / 2 - MOTION.bottomPad - inset };
 }
 
+/**
+ * 손 뗄 때 속도(°/s): 마지막 velWindowMs 동안의 (시각, φ) 표본에 맞춘 직선 기울기(최소제곱).
+ * 이벤트 하나의 짧은 간격으로 튀지 않는다. 마지막 움직임 뒤 restMs 넘게 가만히 있었으면 멈춘 점을 더해 속도를 깎는다.
+ */
+export function releaseVelocity(samples: { t: number; phi: number }[], now: number): number {
+  const s = samples.filter((p) => now - p.t <= MOTION.velWindowMs);
+  const last = s[s.length - 1];
+  if (last && now - last.t > MOTION.restMs) s.push({ t: now, phi: last.phi });
+  if (s.length < 2) return 0;
+  const mt = s.reduce((a, p) => a + p.t, 0) / s.length;
+  const mp = s.reduce((a, p) => a + p.phi, 0) / s.length;
+  let num = 0, den = 0;
+  for (const p of s) {
+    num += (p.t - mt) * (p.phi - mp);
+    den += (p.t - mt) ** 2;
+  }
+  return den > 0 ? (num / den) * 1000 : 0;
+}
+
+/**
+ * 손 뗀 뒤 갈 곳과 감속률. φ + v·inertiaLead(관성으로 멈출 곳)에 가장 가까운 주제로 간다.
+ * 앞쪽 주제로 갈 때는 감속률 ω = |v|/거리(범위 안): 속도가 남은 거리에 비례해 줄어 처음 빠르고 정가운데에 가까울수록 느려진다.
+ * ω ≥ |v|/거리라서 넘치지 않는다. 이 속도로 넘칠 만큼 가까운 앞 주제는 건너뛴다. 느리거나 뒤쪽 주제면 snapOmega.
+ */
+export function glideTarget(phi: number, v: number, lambdas: number[]): { target: number; omega: number } {
+  const lead = phi + v * MOTION.inertiaLead;
+  const sp = Math.abs(v);
+  const glide = sp >= MOTION.glideMinVel;
+  let best = phi;
+  let bd = Infinity;
+  for (const l of lambdas)
+    for (const k of [-360, 0, 360]) {
+      const t = phi + wrapDeg(l - phi) + k;
+      const ahead = (t - phi) * Math.sign(v);
+      if (glide && ahead >= 0 && ahead < sp / MOTION.glideOmegaMax) continue;
+      if (Math.abs(t - lead) < bd) {
+        bd = Math.abs(t - lead);
+        best = t;
+      }
+    }
+  const ahead = (best - phi) * Math.sign(v);
+  const omega = glide && ahead > 0 ? Math.min(MOTION.glideOmegaMax, Math.max(MOTION.glideOmegaMin, sp / ahead)) : MOTION.snapOmega;
+  return { target: best, omega };
+}
+
+/** 임계 감쇠 스프링을 dt만큼 정확히 푼다(x = φ − 목표, dt가 커도 넘치지 않게) */
+export function springStep(x: number, v: number, om: number, dt: number): { x: number; v: number } {
+  const e = Math.exp(-om * dt);
+  const c = v + om * x;
+  return { x: (x + c * dt) * e, v: (c - om * (x + c * dt)) * e };
+}
+
 /** 크기 0 측정 뒤 다시 재는 최대 프레임 수 */
 const MEASURE_RETRIES = 60;
 
@@ -75,7 +127,7 @@ const DOT_CARD = 0.16;
  * 천구 회전 엔진. 끌기는 좌우만(φ). 시선 높이 θ는 φ에서 정해져(pitchAt) 정면으로 오는 주제의 높이를 따라간다.
  * 프레임마다 무리 컨테이너 N개에 transform·opacity·z-index를 직접 쓰고(React 재렌더 없음),
  * 카드 하나하나는 펼쳐진 무리만 쓴다. 크기에는 화면 중심 어안 배율을 곱한다.
- * 손을 떼면 관성 방향에서 경도가 가장 가까운 주제로 임계 감쇠 스프링 스냅.
+ * 손을 떼면 그 속도를 이어받아 관성으로 멈출 곳에 가장 가까운 주제로 감속하며 멈춘다(임계 감쇠 스프링, D34).
  */
 export class GlobeEngine {
   private items: GlobeItem[] = [];
@@ -84,6 +136,8 @@ export class GlobeEngine {
   private vel = 0;
   private mode: 'idle' | 'drag' | 'spring' | 'wheel' = 'idle';
   private target = 0;
+  /** 지금 스프링의 각진동수(1/s). 밀고 난 감속은 손 뗀 속도·거리로 정한다 */
+  private omega: number = MOTION.snapOmega;
   private zoom = 1;
   private zoomTarget = 1;
   /** 투영 중심 높이(화면 비율). 쓰기 모드에서는 쓰기 칸 아래로 내린다 */
@@ -210,6 +264,7 @@ export class GlobeEngine {
     const it = this.items.find((x) => x.id === id);
     if (!it) return;
     this.target = this.phi + wrapDeg(it.lambda - this.phi);
+    this.omega = MOTION.snapOmega;
     this.startSpring(0);
   }
 
@@ -242,8 +297,9 @@ export class GlobeEngine {
 
   private release(v: number) {
     const v0 = Math.max(-MOTION.maxVel, Math.min(MOTION.maxVel, v));
-    const t = snapYaw(this.phi + v0 * MOTION.inertiaLead, this.items.map((i) => i.lambda));
-    this.target = this.phi + wrapDeg(t - this.phi);
+    const g = glideTarget(this.phi, v0, this.items.map((i) => i.lambda));
+    this.target = g.target;
+    this.omega = g.omega;
     this.startSpring(v0);
   }
 
@@ -274,14 +330,10 @@ export class GlobeEngine {
     this.last = t;
     let busy = this.mode === 'drag' || this.mode === 'wheel';
     if (this.mode === 'spring') {
-      // 임계 감쇠 스프링을 한 프레임 정확히 푼다(dt가 커도 넘치지 않게)
-      const om = MOTION.snapOmega;
-      const x = this.phi - this.target;
-      const e = Math.exp(-om * dt);
-      const c = this.vel + om * x;
-      this.phi = this.target + (x + c * dt) * e;
-      this.vel = (c - om * (x + c * dt)) * e;
-      if (Math.abs(this.phi - this.target) < 0.02 && Math.abs(this.vel) < 0.5) {
+      const s = springStep(this.phi - this.target, this.vel, this.omega, dt);
+      this.phi = this.target + s.x;
+      this.vel = s.v;
+      if (Math.abs(this.phi - this.target) < 0.05 && Math.abs(this.vel) < 1) {
         this.phi = this.target;
         this.vel = 0;
         this.mode = 'idle';
@@ -416,7 +468,8 @@ export class GlobeEngine {
     let gesture: 'none' | 'pending' | 'drag' | 'lift' = 'none';
     let start = { x: 0, y: 0, t: 0 };
     let startTarget: Element | null = null;
-    let lastMove = 0;
+    /** 끄는 동안의 (시각, φ) 표본(손 뗄 때 속도용) */
+    let samples: { t: number; phi: number }[] = [];
     let liftTimer = 0;
     const clearLift = () => {
       window.clearTimeout(liftTimer);
@@ -460,16 +513,15 @@ export class GlobeEngine {
         gesture = 'drag';
         this.mode = 'drag';
         this.vel = 0;
-        lastMove = performance.now();
+        samples = [{ t: performance.now(), phi: this.phi }];
         this.settled = false;
       }
       // 좌우만 돌린다. 위아래 움직임은 무시(높이는 주제를 따라간다)
       const now = performance.now();
       const d = -dx * MOTION.degPerPx / Math.max(0.3, this.zoom);
       this.phi += d;
-      const ms = now - lastMove;
-      if (ms > 0) this.vel = this.vel * 0.4 + (d / (ms / 1000)) * 0.6;
-      lastMove = now;
+      samples.push({ t: now, phi: this.phi });
+      if (samples.length > 2 && now - samples[0]!.t > MOTION.velWindowMs * 2) samples.shift();
       this.kick();
     };
 
@@ -483,7 +535,7 @@ export class GlobeEngine {
       clearLift();
       if (g === 'lift') this.opts.onDrop?.(e.clientX, e.clientY);
       if (g === 'pending' && performance.now() - start.t < 600 && startTarget) this.opts.onTap(startTarget, e.clientX, e.clientY);
-      if (this.mode === 'drag') this.release(performance.now() - lastMove > 90 ? 0 : this.vel);
+      if (this.mode === 'drag') this.release(releaseVelocity(samples, performance.now()));
     };
 
     const cancel = (e: PointerEvent) => {
