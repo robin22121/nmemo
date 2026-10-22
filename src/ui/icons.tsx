@@ -26,3 +26,7 @@ export const CheckIcon = () => (
 export const CloseIcon = () => (
   <svg {...base}><path d="M6 6l12 12M18 6L6 18" /></svg>
 );
+/** AI 이동 이력: 옆으로 휘어 옮겨 간 화살표 */
+export const MovedIcon = () => (
+  <svg {...base} strokeWidth={2.4}><path d="M5 17c0-6 4-9 11-9" /><path d="M13 4.5L16.5 8 13 11.5" /></svg>
+);

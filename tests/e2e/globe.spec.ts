@@ -191,3 +191,103 @@ test('지구본: 들어 올린 카드를 목록 밖에 놓으면 취소되고 �
   await expect(page.getByTestId('sheet-text')).toBeVisible();
   await expect(page.getByTestId('move-topics')).toHaveCount(0);
 });
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+type KkDb = { db: any };
+
+/** 정가운데 주제의 첫 카드와, 다른 주제에 있는 메모 하나 */
+async function frontAndOther(page: Page) {
+  const board = page.getByTestId('board');
+  await expect(board).toHaveAttribute('data-settled', '1');
+  const front = (await board.getAttribute('data-front'))!;
+  const memoId = (await page.locator(`.g-cluster[data-topic-id="${front}"] [data-memo-id]`).first().getAttribute('data-memo-id'))!;
+  const other = await page.evaluate(
+    async (front) => {
+      const db = (window as unknown as { __kk: KkDb }).__kk.db;
+      const o = (await db.memos.toArray()).find((m: any) => m.status === 'organized' && m.topicId && m.topicId !== front);
+      const ot = await db.topics.get(o.topicId);
+      const ft = await db.topics.get(front);
+      return { memoId: o.id as string, topicId: o.topicId as string, color: ot.color as string, name: ot.name as string, frontName: ft.name as string };
+    },
+    front,
+  );
+  return { board, front, memoId, other };
+}
+
+async function openSheetOf(page: Page, memoId: string, topicId: string) {
+  const board = page.getByTestId('board');
+  await expect(board).toHaveAttribute('data-settled', '1');
+  // 링크를 더하면 주제 자리가 다시 계산되어 정면이 바뀔 수 있다 → 그 주제 이름표를 눌러 정면으로
+  if ((await board.getAttribute('data-front')) !== topicId) await page.locator(`.g-cluster[data-topic-id="${topicId}"] .g-tag`).click();
+  await expect(board).toHaveAttribute('data-front', topicId);
+  await expect(board).toHaveAttribute('data-settled', '1');
+  // 배치가 바뀐 직후엔 카드가 이름표 자리에서 다시 펼쳐진다 → 자리가 멈추고 맨 위에 있을 때 누른다(Playwright 클릭 대기)
+  await page.locator(`.g-card[data-memo-id="${memoId}"] .face`).click();
+  await expect(page.getByTestId('memo-sheet')).toBeVisible();
+  const text = await page.evaluate(async (id) => (await (window as unknown as { __kk: KkDb }).__kk.db.memos.get(id)).text as string, memoId);
+  await expect(page.getByTestId('sheet-text')).toHaveText(text);
+}
+
+test('지구본: 고정 메모가 다른 주제 메모와 이어지면 카드에 그 주제 색 점, 상세에 연결된 주제가 보이고 누르면 그 주제로 돈다(D25)', async ({ page }) => {
+  await page.goto('/?demo=1&reset=1&write=0');
+  const { board, front, memoId, other } = await frontAndOther(page);
+  const card = page.locator(`.g-card[data-memo-id="${memoId}"]`);
+  // 고정 전에는 링크가 있어도 배지가 없다
+  await expect(card.getByTestId('card-conn')).toHaveCount(0);
+  await page.evaluate(
+    async ({ memoId, otherId }) => {
+      const db = (window as unknown as { __kk: KkDb }).__kk.db;
+      await db.memos.update(memoId, { topicLocked: true });
+      const id = memoId < otherId ? `${memoId}|${otherId}` : `${otherId}|${memoId}`;
+      await db.links.put({ id, fromId: memoId, toId: otherId, strength: 1, reason: '같은 동네 이야기' });
+    },
+    { memoId, otherId: other.memoId },
+  );
+  const dot = card.locator(`[data-testid="card-conn"] [data-conn-topic="${other.topicId}"]`);
+  await expect(dot).toHaveCount(1);
+  expect(await dot.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--dc'))).toBe(other.color);
+  await expect(card.getByTestId('card-moved')).toHaveCount(0);
+
+  await openSheetOf(page, memoId, front);
+  const row = page.getByTestId('conn-list').locator(`[data-conn-topic="${other.topicId}"]`);
+  await expect(row).toContainText(other.name);
+  await expect(row).toContainText('같은 동네 이야기');
+  await row.locator('.conn-head').click();
+  await expect(page.getByTestId('memo-sheet')).toHaveCount(0);
+  await expect(board).toHaveAttribute('data-front', other.topicId, { timeout: 5000 });
+});
+
+test('지구본: AI 이동 기록이 있으면 카드에 이력 표시, 상세에 최근 것부터, 되돌린 묶음은 안 보인다(D26)', async ({ page }) => {
+  await page.goto('/?demo=1&reset=1&write=0');
+  const { front, memoId, other } = await frontAndOther(page);
+  const second = (await page.locator(`.g-cluster[data-topic-id="${front}"] [data-memo-id]`).nth(1).getAttribute('data-memo-id'))!;
+  await page.evaluate(
+    async ({ memoId, second, front, from }) => {
+      const db = (window as unknown as { __kk: KkDb }).__kk.db;
+      const now = Date.now();
+      const batch = (id: string, undone: boolean) => ({ id, topicId: front, at: now, prevName: '', prevSummary: '', prevCenterKeywords: [], newName: '', moveCount: 1, undone });
+      await db.batches.bulkPut([batch('e2e-ok', false), batch('e2e-undone', true)]);
+      await db.moves.bulkPut([
+        { id: 'e2e-1', batchId: 'e2e-ok', memoId, fromTopicId: from, toTopicId: front, reason: '이쪽 이야기에 더 가까워요', at: now - 60_000 },
+        { id: 'e2e-2', batchId: 'e2e-ok', memoId, fromTopicId: 'gone-topic', toTopicId: from, reason: '', at: now - 3_600_000 },
+        { id: 'e2e-3', batchId: 'e2e-undone', memoId, fromTopicId: front, toTopicId: from, reason: '되돌린 이동', at: now },
+        { id: 'e2e-4', batchId: 'e2e-undone', memoId: second, fromTopicId: from, toTopicId: front, reason: '되돌린 이동', at: now },
+      ]);
+    },
+    { memoId, second, front, from: other.topicId },
+  );
+  await expect(page.locator(`.g-card[data-memo-id="${memoId}"] [data-testid="card-moved"]`)).toHaveCount(1);
+  await expect(page.locator(`.g-card[data-memo-id="${second}"] [data-testid="card-moved"]`)).toHaveCount(0);
+  // 고정 아닌 메모라 연결 배지는 없다
+  await expect(page.locator(`.g-card[data-memo-id="${memoId}"] [data-testid="card-conn"]`)).toHaveCount(0);
+
+  await openSheetOf(page, memoId, front);
+  const items = page.getByTestId('move-list').locator('li');
+  await expect(items).toHaveCount(2);
+  await expect(items.nth(0)).toContainText(`· ${other.name} → ${other.frontName}`);
+  await expect(items.nth(0)).toContainText('이쪽 이야기에 더 가까워요');
+  await expect(items.nth(0)).toHaveText(/^\d+월 \d+일 \d{2}:\d{2} · /);
+  await expect(items.nth(1)).toContainText(`· (사라진 주제) → ${other.name}`);
+  await expect(page.getByTestId('move-list')).not.toContainText('되돌린 이동');
+  await expect(page.getByTestId('conn-list')).toHaveCount(0);
+});

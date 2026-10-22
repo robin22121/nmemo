@@ -1,9 +1,12 @@
 import { AnimatePresence, motion, useDragControls, type PanInfo } from 'framer-motion';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { connectedTopics, visibleMoves } from '../core/connections';
 import { deleteMemo, moveMemoToNewTopic, moveMemoToTopic, setDone } from '../db/repo';
 import { getDb, type Memo } from '../db/schema';
+import { motionBus } from '../motion/bus';
 import { spring } from '../motion/presets';
+import { GLOBE_ON } from './globe/config';
 import { useObjectUrl } from './hooks';
 import { CloseIcon } from './icons';
 
@@ -46,6 +49,24 @@ function SheetBody({ memo, onClose, onSelect, notify }: { memo: Memo; onClose: (
     [memo.id],
     [],
   );
+  // 고정 메모가 이어진 다른 주제들(D25)
+  const conns = useMemo(
+    () => connectedTopics([memo, ...related.map((r) => r.memo)], related.map((r) => ({ fromId: memo.id, toId: r.memo.id, strength: r.strength, reason: r.reason }))).get(memo.id) ?? [],
+    [memo, related],
+  );
+  const relById = useMemo(() => new Map(related.map((r) => [r.memo.id, r.memo])), [related]);
+  // AI 재정리로 옮겨진 기록, 되돌린 묶음 제외, 최근 것부터(D26)
+  const moves = useLiveQuery(
+    async () => {
+      const db = getDb();
+      const ms = await db.moves.where('memoId').equals(memo.id).toArray();
+      const bs = await db.batches.bulkGet([...new Set(ms.map((m) => m.batchId))]);
+      return visibleMoves(ms, bs.filter((b) => !!b));
+    },
+    [memo.id],
+    [],
+  );
+  const topicName = (id: string) => topics.find((t) => t.id === id)?.name ?? '(사라진 주제)';
 
   const choose = async (topicId: string) => {
     if (topicId !== memo.topicId) {
@@ -111,6 +132,66 @@ function SheetBody({ memo, onClose, onSelect, notify }: { memo: Memo; onClose: (
               </li>
             ))}
           </ul>
+        )}
+
+        {conns.length > 0 && (
+          <>
+            <h3 className="sheet-h">연결된 주제</h3>
+            <ul className="conn-list" data-testid="conn-list">
+              {conns.map((c) => {
+                const t = topics.find((x) => x.id === c.topicId);
+                const head = (
+                  <>
+                    <i />
+                    <span className="conn-name">{t?.name ?? '(사라진 주제)'}</span>
+                  </>
+                );
+                return (
+                  <li key={c.topicId} data-conn-topic={c.topicId} style={{ ['--c' as string]: t?.color ?? '#ccc' }}>
+                    {GLOBE_ON && t ? (
+                      <button
+                        type="button"
+                        className="conn-head"
+                        onClick={() => {
+                          motionBus.emit({ type: 'focusTopic', topicId: c.topicId });
+                          onClose();
+                        }}
+                      >
+                        {head}
+                      </button>
+                    ) : (
+                      <div className="conn-head">{head}</div>
+                    )}
+                    {c.links.map((l) => {
+                      const m = relById.get(l.memoId);
+                      return (
+                        <p key={l.memoId} className="conn-link">
+                          {m ? m.summary || m.text || '사진' : ''}
+                          <span> · {l.reason || '내용이 이어져요'}</span>
+                        </p>
+                      );
+                    })}
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+
+        {moves.length > 0 && (
+          <>
+            <h3 className="sheet-h">이동 기록</h3>
+            <ul className="move-list" data-testid="move-list">
+              {moves.map((m) => (
+                <li key={m.id}>
+                  <span className="move-line">
+                    {fmtDate(m.at)} · {topicName(m.fromTopicId)} → {topicName(m.toTopicId)}
+                  </span>
+                  {m.reason && <span className="move-reason">{m.reason}</span>}
+                </li>
+              ))}
+            </ul>
+          </>
         )}
 
         <h3 className="sheet-h">주제</h3>

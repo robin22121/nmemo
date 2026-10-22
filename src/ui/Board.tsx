@@ -276,7 +276,7 @@ function FlatBoard({ selectedMemoId, openClusterId, onSelectMemo, onOpenCluster,
       motionBus.subscribe((m) => {
         if (m.type === 'departure') {
           if (!reduced) departures.current.set(m.departure.memoId, { ...m.departure, at: Date.now() });
-        } else {
+        } else if (m.type !== 'focusTopic') {
           pendingReorg.current = { moved: m.outcome.moved.map((x) => x.memoId), at: Date.now() };
         }
       }),

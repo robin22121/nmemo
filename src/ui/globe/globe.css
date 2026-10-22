@@ -72,6 +72,17 @@
 .g-board .face.idea::after { display: none; }
 .g-board .face.photo { border-radius: 999px; }
 .g-board .face.todo .todo-check { border-color: color-mix(in srgb, var(--c) 45%, #8a7f6b); }
+/* 카드 오른쪽 위의 작은 표시(D25·D26): 이어진 다른 주제 색 점, AI 이동 이력. 카드 빛과 같은 종이빛 알약에 은은하게 */
+.g-marks { position: absolute; right: 10px; top: -6px; display: flex; align-items: center; gap: 3px; pointer-events: none; }
+.g-conn, .g-moved {
+  display: inline-flex; align-items: center; height: 14px; border-radius: 999px;
+  background: rgba(255, 252, 245, 0.92); box-shadow: 0 0 6px 1px color-mix(in srgb, var(--c) 14%, transparent), 0 1px 3px rgba(58, 50, 38, 0.1);
+}
+.g-conn { gap: 2px; padding: 0 4px; }
+.g-conn i { width: 7px; height: 7px; border-radius: 50%; background: var(--dc); box-shadow: 0 0 4px 1px color-mix(in srgb, var(--dc) 45%, transparent); }
+.g-conn b { font-size: 9px; font-weight: 700; line-height: 1; margin-left: 1px; color: var(--ink-soft); }
+.g-moved { width: 14px; justify-content: center; color: color-mix(in srgb, var(--c) 50%, var(--ink-soft)); }
+.g-moved svg { width: 9px; height: 9px; }
 
 /* 주제 옆 동그란 +: 펼친(정가운데) 주제에만. 누르면 여기서 쓰기 칸이 커지며 열린다 */
 .g-tag-plus {

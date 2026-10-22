@@ -1,5 +1,7 @@
+import { useLiveQuery } from 'dexie-react-hooks';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { connectedTopics, visibleMoves, type TopicConnection } from '../../core/connections';
 import { GLOBE, pickShown, placeTopics, ringCapacity, ringLayout, type RingBox } from '../../core/layout/globe';
 import { setDone } from '../../db/repo';
 import { getDb } from '../../db/schema';
@@ -8,7 +10,7 @@ import { motionBus } from '../../motion/bus';
 import { arcKeyframes, FLIGHT_SECONDS } from '../../motion/presets';
 import { getQueue } from '../../organize/runtime';
 import { usePending } from '../hooks';
-import { PlusIcon } from '../icons';
+import { MovedIcon, PlusIcon } from '../icons';
 import { CardFace, cardText, cardTilt } from '../MemoCard';
 import { useBoardData } from '../useBoardData';
 import { GlobeComposer } from './Composer';
@@ -58,6 +60,30 @@ function writeLastTopic(id: string) {
   } catch {
     // 저장소를 못 쓰면 이번 실행에서만 기억
   }
+}
+
+/** 카드 오른쪽 위의 작은 표시: 고정 메모가 이어진 다른 주제 색 점(D25, 3개까지 + "+N"), AI 이동 이력(D26) */
+function CardMarks({ conn, moved, colorOf }: { conn?: TopicConnection[]; moved: boolean; colorOf: Map<string, string> }) {
+  if (!conn?.length && !moved) return null;
+  const shown = conn?.slice(0, 3) ?? [];
+  const rest = (conn?.length ?? 0) - shown.length;
+  return (
+    <span className="g-marks" aria-hidden>
+      {shown.length > 0 && (
+        <span className="g-conn" data-testid="card-conn">
+          {shown.map((c) => (
+            <i key={c.topicId} data-conn-topic={c.topicId} style={{ ['--dc' as string]: colorOf.get(c.topicId) ?? '#c9c2b0' }} />
+          ))}
+          {rest > 0 && <b>+{rest}</b>}
+        </span>
+      )}
+      {moved && (
+        <span className="g-moved" data-testid="card-moved">
+          <MovedIcon />
+        </span>
+      )}
+    </span>
+  );
 }
 
 function FlightCard({ f, onLand }: { f: Flight; onLand: (f: Flight) => void }) {
@@ -110,6 +136,12 @@ export function GlobeBoard({
   // 쓰기 칸을 연 곳: 주제 옆 +면 그 주제, 그리고 열고 닫힐 때의 기준점(누른 버튼 중심)
   const [writeTo, setWriteTo] = useState<{ topicId: string | null; origin: { x: number; y: number } | null }>({ topicId: null, origin: null });
   const pending = usePending();
+  // 연결 배지(D25)·이동 이력(D26): 보드 전체에서 한 번씩 읽고 맵으로 만들어 카드마다 찾아 쓴다
+  const moves = useLiveQuery(() => getDb().moves.toArray(), [], []);
+  const batches = useLiveQuery(() => getDb().batches.toArray(), [], []);
+  const conns = useMemo(() => connectedTopics(memos, links), [memos, links]);
+  const moved = useMemo(() => new Set(visibleMoves(moves, batches).map((m) => m.memoId)), [moves, batches]);
+  const colorOf = useMemo(() => new Map(topics.map((t) => [t.id, t.color])), [topics]);
   // 정돈되어 날아올 메모: 제 칸에서는 숨겨 두었다가 비행이 끝나면 보인다
   const [incoming, setIncoming] = useState<Map<string, { topicId: string; from: { x: number; y: number } | null; at: number }>>(new Map());
   const [flights, setFlights] = useState<Flight[]>([]);
@@ -259,9 +291,11 @@ export function GlobeBoard({
   }, []);
 
   // 대기열이 메모를 정돈하면(App이 departure를 보냄) 날아올 메모로 등록. 출발점은 대기 칩(쓰기 칸이 있던 자리)
+  // 메모 상세에서 연결된 주제를 누르면(focusTopic) 그 주제로 돌아 집중한다
   useEffect(
     () =>
       motionBus.subscribe((m) => {
+        if (m.type === 'focusTopic') return engine.current?.focusTo(m.topicId);
         if (m.type !== 'departure') return;
         const d = m.departure;
         setIncoming((cur) => new Map(cur).set(d.memoId, { topicId: d.topicId, from: d.from, at: Date.now() }));
@@ -454,6 +488,7 @@ export function GlobeBoard({
               >
                 <div className="card" style={{ transform: `translate(-50%, -50%) rotate(${cardTilt(memo)}deg)` }}>
                   <CardFace memo={memo} onToggleDone={(mid, d) => void setDone(mid, d)} />
+                  <CardMarks conn={conns.get(memo.id)} moved={moved.has(memo.id)} colorOf={colorOf} />
                 </div>
                 <i className="g-dot" />
               </div>

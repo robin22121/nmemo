@@ -28,6 +28,17 @@
 .rel-text { font-size: 14px; }
 .rel-reason { font-size: 12px; color: var(--ink-soft); }
 .rel-bar { position: absolute; left: 0; bottom: 0; height: 3px; background: #e7a600; opacity: 0.7; }
+/* 연결된 주제(D25)·이동 기록(D26): 주제 색 점 + 이름, 아래에 이어진 메모와 이유 */
+.conn-list, .move-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.conn-list li { padding: 8px 12px 9px; border-radius: 12px; background: color-mix(in srgb, var(--c) 10%, var(--paper-2)); display: grid; gap: 3px; }
+.conn-head { display: inline-flex; align-items: center; gap: 7px; justify-self: start; font-size: 14px; font-weight: 700; color: color-mix(in srgb, var(--c) 45%, var(--ink)); text-align: left; }
+.conn-head i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 5px 1px color-mix(in srgb, var(--c) 40%, transparent); }
+button.conn-head::after { content: '›'; font-weight: 400; color: var(--ink-soft); }
+.conn-link { margin: 0; font-size: 13px; }
+.conn-link span { color: var(--ink-soft); font-size: 12px; }
+.move-list li { padding: 8px 12px; border-radius: 12px; background: var(--paper-2); display: grid; gap: 2px; }
+.move-line { font-size: 13.5px; }
+.move-reason { font-size: 12px; color: var(--ink-soft); }
 .topic-row { display: flex; align-items: center; gap: 10px; }
 .topic-chip {
   padding: 5px 12px; border-radius: 999px; font-size: 13.5px; background: color-mix(in srgb, var(--c) 28%, #fff);

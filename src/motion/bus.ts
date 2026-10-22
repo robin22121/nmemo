@@ -9,7 +9,12 @@ export interface Departure {
   topicId: string;
 }
 
-type Msg = { type: 'departure'; departure: Departure } | { type: 'reorganized'; outcome: ReorgOutcome } | { type: 'undone'; outcome: ReorgOutcome };
+type Msg =
+  | { type: 'departure'; departure: Departure }
+  | { type: 'reorganized'; outcome: ReorgOutcome }
+  | { type: 'undone'; outcome: ReorgOutcome }
+  /** 메모 상세의 연결된 주제를 누름 → 지구본이 그 주제로 돈다 */
+  | { type: 'focusTopic'; topicId: string };
 
 const subs = new Set<(m: Msg) => void>();
 
