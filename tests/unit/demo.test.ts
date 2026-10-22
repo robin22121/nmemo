@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeLayout } from '../../src/core/layout/clusters';
-import { buildDemo, seedDemoIfEmpty } from '../../src/db/demoSeed';
+import { buildBigDemo, buildDemo, seedDemoIfEmpty } from '../../src/db/demoSeed';
 import { initDb } from '../../src/db/schema';
 
 describe('demo seed', () => {
@@ -46,5 +46,16 @@ describe('demo seed', () => {
     expect(await seedDemoIfEmpty(db)).toBe(true);
     expect(await db.memos.count()).toBe(40);
     expect(await seedDemoIfEmpty(db)).toBe(false);
+  });
+});
+
+describe('큰 데모(demo=big)', () => {
+  it('주제 15개·메모 200개, 30장 넘는 주제가 있고 링크는 실제 메모를 가리킨다', () => {
+    const d = buildBigDemo(1_700_000_000_000);
+    expect(d.topics).toHaveLength(15);
+    expect(d.memos).toHaveLength(200);
+    expect(Math.max(...d.topics.map((t) => d.memos.filter((m) => m.topicId === t.id).length))).toBeGreaterThan(30);
+    const ids = new Set(d.memos.map((m) => m.id));
+    for (const l of d.links) expect(ids.has(l.fromId) && ids.has(l.toId)).toBe(true);
   });
 });

@@ -5,6 +5,8 @@ import { setDone } from '../db/repo';
 import type { Memo, Topic } from '../db/schema';
 import { motionBus, type Departure } from '../motion/bus';
 import { arcKeyframes, FLIGHT_SECONDS, REORG_STAGGER, spring, wobbleOffset } from '../motion/presets';
+import { GLOBE_ON } from './globe/config';
+import { GlobeBoard } from './globe/GlobeBoard';
 import { cardTilt, CardFace, MemoCard } from './MemoCard';
 import { RelatedLines } from './RelatedLines';
 import { useBoardData } from './useBoardData';
@@ -115,7 +117,12 @@ function FlightCard({ flight, onLand }: { flight: Flight; onLand: (f: Flight) =>
   );
 }
 
-export function Board({ selectedMemoId, openClusterId, onSelectMemo, onOpenCluster, onMoveToTopic, onMoveToNew }: BoardProps) {
+/** `?globe=1`이면 지구본 보드 프로토타입, 아니면 기존 평면 보드 */
+export function Board(props: BoardProps) {
+  return GLOBE_ON ? <GlobeBoard onSelectMemo={props.onSelectMemo} /> : <FlatBoard {...props} />;
+}
+
+function FlatBoard({ selectedMemoId, openClusterId, onSelectMemo, onOpenCluster, onMoveToTopic, onMoveToNew }: BoardProps) {
   const { topics, memos, links, layout, ready } = useBoardData();
   const reduced = useReducedMotion();
   const layoutRef = useRef(layout);

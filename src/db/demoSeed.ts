@@ -150,3 +150,54 @@ export async function seedDemoIfEmpty(db: KkeujeogimDB): Promise<boolean> {
   });
   return true;
 }
+
+/** 성능 측정용 큰 데모(`?demo=big`): 주제 15개·메모 200개. 가장 큰 주제는 30장을 넘는다. 문장은 기본 데모를 돌려 쓴다 */
+const BIG_TOPICS = ['동네 카페', '달리기', '앱 아이디어', '이사 준비', '제주 여행', '요즘 마음', '책 읽기', '요리', '회사 일', '영어 공부', '사진', '음악', '가족', '돈 관리', '건강'];
+const BIG_SIZES = [34, 22, 18, 16, 14, 13, 12, 11, 10, 10, 9, 9, 8, 7, 7];
+
+export function buildBigDemo(now = Date.now()): { topics: Topic[]; memos: Memo[]; links: Link[] } {
+  const topics: Topic[] = BIG_TOPICS.map((name, i) => ({
+    id: `big-topic-${String(i).padStart(2, '0')}`,
+    name,
+    summary: `${name} 이야기`,
+    color: TOPIC_PALETTE[i % TOPIC_PALETTE.length]!,
+    createdAt: now - (BIG_TOPICS.length - i) * 86_400_000,
+    centerKeywords: [name],
+    nameLocked: false,
+    lastReorgAt: now,
+    sinceReorg: 0,
+  }));
+  const memos: Memo[] = [];
+  const links: Link[] = [];
+  const link = (a: string, b: string, strength: number) => links.push({ id: linkId(a, b), fromId: a, toId: b, strength, reason: '내용이 닮았어요' });
+  BIG_SIZES.forEach((size, t) => {
+    const ids: string[] = [];
+    for (let k = 0; k < size; k++) {
+      const n = memos.length;
+      const s = SEEDS[n % SEEDS.length]!;
+      const emo = E[s.e ?? '담담']!;
+      const id = `big-memo-${String(n).padStart(3, '0')}`;
+      ids.push(id);
+      memos.push({
+        id, createdAt: now - (200 - n) * 3_600_000, input: 'text', text: s.s, kind: s.k,
+        emotion: { label: emo[0], color: emo[1] }, keywords: s.kw, summary: s.s,
+        topicId: topics[t]!.id, topicLocked: false, status: 'organized', attempts: 0,
+      });
+    }
+    ids.forEach((id, k) => { if (size > 1 && k < size - 1) link(id, ids[k + 1]!, 0.4); });
+    // 앞 주제와 이어지는 링크 → 원 위 순서가 생긴다
+    if (t > 0) link(memos.find((m) => m.topicId === topics[t - 1]!.id)!.id, ids[0]!, 0.7);
+  });
+  return { topics, memos, links };
+}
+
+export async function seedBigDemoIfEmpty(db: KkeujeogimDB): Promise<boolean> {
+  if ((await db.memos.count()) > 0) return false;
+  const { topics, memos, links } = buildBigDemo();
+  await db.transaction('rw', db.topics, db.memos, db.links, async () => {
+    await db.topics.bulkAdd(topics);
+    await db.memos.bulkAdd(memos);
+    await db.links.bulkAdd(links);
+  });
+  return true;
+}
