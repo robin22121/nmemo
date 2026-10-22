@@ -83,8 +83,11 @@ export class GlobeEngine {
   }
 
   resize() {
-    this.w = this.root.clientWidth || window.innerWidth;
-    this.h = this.root.clientHeight || window.innerHeight;
+    const w = this.root.clientWidth || window.innerWidth;
+    const h = this.root.clientHeight || window.innerHeight;
+    if (w === this.w && h === this.h) return;
+    this.w = w;
+    this.h = h;
     this.settled = false;
     this.kick();
   }
@@ -390,7 +393,11 @@ export class GlobeEngine {
     el.addEventListener('contextmenu', noMenu);
     document.addEventListener('gesturestart', noGesture);
     window.addEventListener('resize', onResize);
+    // 인앱 브라우저는 처음 폭을 넓게 알렸다가 resize 이벤트 없이 줄이기도 한다 → 보드 크기를 직접 지켜본다(중심 쏠림 방지)
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(onResize);
+    ro?.observe(el);
     return () => {
+      ro?.disconnect();
       el.removeEventListener('pointerdown', down);
       el.removeEventListener('pointermove', move);
       el.removeEventListener('pointerup', up);
