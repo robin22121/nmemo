@@ -229,9 +229,13 @@ export function GlobeBoard({
           if (d <= 16 && (!best || d < best.d)) best = { id, d };
         }
         if (best) {
-          // 이름표: 하늘 보기면 그 주제로 돌며 메모가 터져 나오고, 집중 보기면 그 주제로 돌아 집중
+          // 이름표: 하늘 보기면 그 주제로 돌며 메모가 터져 나오고, 집중 보기면 그 주제로 돌아 집중, 정면 이름표면 메모가 접혀 하늘(D29)
           if (!focus) e.focusTo(best.id);
           else if (best.id !== front) e.rotateTo(best.id);
+          else {
+            select.current(null);
+            e.setFocus(false);
+          }
           return;
         }
         if (noTopics.current) {

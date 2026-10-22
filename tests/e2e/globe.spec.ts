@@ -291,3 +291,34 @@ test('지구본: AI 이동 기록이 있으면 카드에 이력 표시, 상세�
   await expect(page.getByTestId('move-list')).not.toContainText('되돌린 이동');
   await expect(page.getByTestId('conn-list')).toHaveCount(0);
 });
+
+test('지구본: 열기와 닫기는 대칭 — 하늘에서 주제를 누르면 집중, 정면 이름표나 빈 곳을 누르면 접혀 하늘(D29)', async ({ page }) => {
+  await page.goto('/?demo=1&reset=1&write=0');
+  await expect(page.getByTestId('board-info')).toHaveAttribute('data-cards', '40');
+  const board = page.getByTestId('board');
+  await expect(board).toHaveAttribute('data-settled', '1');
+  const front = (await board.getAttribute('data-front'))!;
+  const tag = page.locator(`.g-cluster[data-topic-id="${front}"] .g-tag`);
+  // 집중 → 정면 이름표 → 하늘
+  if ((await board.getAttribute('data-mode')) !== 'focus') await tag.click();
+  await expect(board).toHaveAttribute('data-mode', 'focus');
+  await tag.click();
+  await expect(board).toHaveAttribute('data-mode', 'sky');
+  // 하늘 → 주제 → 집중
+  await tag.click();
+  await expect(board).toHaveAttribute('data-mode', 'focus');
+  // 집중 → 빈 곳 → 하늘
+  // 이름표·카드에서 멀리 떨어진 빈 곳을 찾아 누른다
+  const spot = await page.evaluate(() => {
+    const rects = [...document.querySelectorAll('.g-tag, .g-card, [data-more]')].map((el) => el.getBoundingClientRect());
+    for (let y = 60; y < innerHeight - 60; y += 15)
+      for (let x = 30; x < innerWidth - 30; x += 15) {
+        const far = rects.every((r) => Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom)) > 24);
+        if (far && document.elementFromPoint(x, y)?.closest('.g-stage, .g-board')) return { x, y };
+      }
+    return null;
+  });
+  expect(spot).not.toBeNull();
+  await page.mouse.click(spot!.x, spot!.y);
+  await expect(board).toHaveAttribute('data-mode', 'sky');
+});
