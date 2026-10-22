@@ -58,7 +58,7 @@
 | 배포 | Vercel, `main` push = 운영 자동 배포, Basic Auth(환경변수 ID/PW) | ✅ 74429f4 | — | `docs/deploy-log.md` |
 | 서버 | `api/[route].ts` → `server/organize.ts`, 모델은 `MODEL` 상수 | ✅ 573d88e | ~~Firebase Functions~~ → Vercel(2026-10-22): 실제 배포처 | `CLAUDE.md` |
 | 저장 | 기기 IndexedDB(Dexie v2)만, 동기화 없음. 백업 = 내보내기(예정) | ✅ | — | Z3 |
-| 호출 상한 | Vercel 방화벽 `/api` IP당 시간당 150회(예정) + Anthropic 월 한도(사용자) | 📝 | — | Z2 |
+| 호출 상한 | Vercel 방화벽 규칙 `api-rate-limit`: `/api` IP당 시간당 150회(고정 창), 넘으면 429(2026-10-22) + Anthropic 월 한도(사용자) | ✅ 운영 실측 150×200·5×429 | — | Z2 |
 | 세션 운영 | 저장소를 고치는 세션은 동시에 하나 | 📝 | — | `CLAUDE.md` |
 
 ## 알려진 결함·불일치

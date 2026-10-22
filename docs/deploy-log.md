@@ -16,3 +16,4 @@
 
 - 2026-10-22 Vercel 환경변수 `ANTHROPIC_API_KEY`(Production·Preview, 채팅 노출 키 — 교체 대기), `APP_LOGIN_ID`·`APP_LOGIN_PASSWORD`(Production·Preview).
 - GitHub `main` push = 운영 자동 배포(Vercel Git 연결).
+- 2026-10-22 Vercel 방화벽 규칙 `api-rate-limit` 게시: `/api` 경로 IP당 3600초 150회(fixed_window), 초과 시 429. 끄기: `vercel firewall rules` → 비활성화 후 `vercel firewall publish`.
