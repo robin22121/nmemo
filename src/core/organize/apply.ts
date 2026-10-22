@@ -73,6 +73,9 @@ export async function applyResult(
       retryAt: undefined,
     };
     if (memo.editReanalyze) patch.editReanalyze = false;
+    // 첫 정돈 시각만 남긴다(Z5): 재정돈·글을 고쳐 다시 정돈한 것은 바꾸지 않는다.
+    // 쓸 때 주제를 고른 메모(이미 topicLocked)는 AI가 분류한 게 아니라 기록하지 않는다
+    else if (memo.organizedAt === undefined && !memo.topicLocked) patch.organizedAt = now;
     // 사용자가 일부러 비운 사진 설명(편집)은 다시 채우지 않는다
     if (memo.input === 'photo' && !memo.text.trim() && result.text && !memo.editReanalyze) patch.text = result.text;
     await r.updateMemo(memoId, patch);

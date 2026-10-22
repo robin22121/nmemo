@@ -64,9 +64,9 @@ export async function deleteMemo(repo: Repo, id: string): Promise<void> {
   });
 }
 
-export async function moveMemoToTopic(repo: Repo, memoId: string, topicId: string): Promise<void> {
+export async function moveMemoToTopic(repo: Repo, memoId: string, topicId: string, now = Date.now()): Promise<void> {
   await repo.transaction(async (r) => {
-    await r.updateMemo(memoId, { topicId, topicLocked: true });
+    await r.updateMemo(memoId, { topicId, topicLocked: true, lockedAt: now });
     await pruneEmptyTopics(r);
   });
 }
@@ -75,7 +75,7 @@ export async function moveMemoToNewTopic(repo: Repo, memoId: string, name: strin
   return repo.transaction(async (r) => {
     const t = makeTopic(name.trim() || '새 주제', '', await r.listTopics(), now);
     await r.addTopic(t);
-    await r.updateMemo(memoId, { topicId: t.id, topicLocked: true });
+    await r.updateMemo(memoId, { topicId: t.id, topicLocked: true, lockedAt: now });
     await pruneEmptyTopics(r);
     return t;
   });

@@ -14,6 +14,7 @@ import { MovedIcon, PlusIcon } from '../icons';
 import { CardFace, cardText, cardTilt } from '../MemoCard';
 import { useBoardData } from '../useBoardData';
 import { GlobeComposer } from './Composer';
+import { GlobeMenu } from './GlobeMenu';
 import { MOTION, WRITE_START } from './config';
 import { TopicListSheet } from './TopicListSheet';
 import { GlobeEngine, type GlobeItem } from './engine';
@@ -597,6 +598,7 @@ export function GlobeBoard({
           />
         )}
       </AnimatePresence>
+      {!writing && !lift && <GlobeMenu tint={topics.find((t) => t.id === lastTopic)?.color} notify={notify} />}
       {ready && memos.length === 0 && <div className="empty-hint">떠오르는 걸 아무렇게나 던져보세요</div>}
       <span hidden data-testid="board-info" data-clusters={clusters.length} data-cards={memos.length} />
     </div>

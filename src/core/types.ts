@@ -29,6 +29,10 @@ export interface Memo {
   emotionLocked?: boolean;
   /** 글을 고쳐 다시 정돈하는 중: 주제는 그대로 두고 요약·키워드·링크만 갱신한다(색인 아님) */
   editReanalyze?: boolean;
+  /** 처음 정돈된 시각(ms). 재정돈·편집 재정돈은 바꾸지 않는다(Z5, 색인 아님) */
+  organizedAt?: number;
+  /** 사용자가 직접 주제를 옮긴 마지막 시각(ms). 오분류율 기록(Z5, 색인 아님) */
+  lockedAt?: number;
 }
 
 export interface Topic {
