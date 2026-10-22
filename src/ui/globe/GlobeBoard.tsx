@@ -1,4 +1,4 @@
-import { motion, useReducedMotion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GLOBE, pickShown, placeTopics, ringCapacity, ringLayout, type RingBox } from '../../core/layout/globe';
 import { setDone } from '../../db/repo';
@@ -7,7 +7,7 @@ import { motionBus } from '../../motion/bus';
 import { arcKeyframes, FLIGHT_SECONDS } from '../../motion/presets';
 import { getQueue } from '../../organize/runtime';
 import { usePending } from '../hooks';
-import { PenIcon } from '../icons';
+import { PenIcon, PlusIcon } from '../icons';
 import { CardFace, cardText, cardTilt } from '../MemoCard';
 import { useBoardData } from '../useBoardData';
 import { GlobeComposer } from './Composer';
@@ -76,6 +76,8 @@ export function GlobeBoard({ onSelectMemo, notify }: { onSelectMemo: (memoId: st
   const [box, setBox] = useState<RingBox>(() => ringBox());
   const [writing, setWriting] = useState(WRITE_START);
   const [draft, setDraft] = useState('');
+  // 쓰기 칸을 연 곳: 주제 옆 +면 그 주제, 그리고 열고 닫힐 때의 기준점(누른 버튼 중심)
+  const [writeTo, setWriteTo] = useState<{ topicId: string | null; origin: { x: number; y: number } | null }>({ topicId: null, origin: null });
   const pending = usePending();
   // 정돈되어 날아올 메모: 제 칸에서는 숨겨 두었다가 비행이 끝나면 보인다
   const [incoming, setIncoming] = useState<Map<string, { topicId: string; from: { x: number; y: number } | null; at: number }>>(new Map());
@@ -187,7 +189,10 @@ export function GlobeBoard({ onSelectMemo, notify }: { onSelectMemo: (memoId: st
     let hiddenAt = 0;
     const on = () => {
       if (document.visibilityState === 'hidden') hiddenAt = Date.now();
-      else if (hiddenAt && Date.now() - hiddenAt >= MOTION.writeAgainAfter) setWriting(true);
+      else if (hiddenAt && Date.now() - hiddenAt >= MOTION.writeAgainAfter) {
+        setWriteTo({ topicId: null, origin: null });
+        setWriting(true);
+      }
     };
     document.addEventListener('visibilitychange', on);
     return () => document.removeEventListener('visibilitychange', on);
@@ -265,6 +270,12 @@ export function GlobeBoard({ onSelectMemo, notify }: { onSelectMemo: (memoId: st
     [reveal],
   );
 
+  const openComposer = (el: HTMLElement, topicId: string | null) => {
+    const b = el.getBoundingClientRect();
+    setWriteTo({ topicId, origin: { x: b.left + b.width / 2, y: b.top + b.height / 2 } });
+    setWriting(true);
+  };
+
   const closeComposer = (saved: boolean) => {
     setWriting(false);
     if (saved) engine.current?.setFocus(true);
@@ -309,6 +320,17 @@ export function GlobeBoard({ onSelectMemo, notify }: { onSelectMemo: (memoId: st
             )}
             <div className="g-tag" ref={reg(c.topic.id, 'tag')} data-topic-label>
               {c.topic.name}
+              {/* 펼친(정가운데) 주제에만 보인다. 누르면 이 자리에서 쓰기 칸이 커지며 열리고, 쓴 메모는 이 주제에 붙는다 */}
+              <button
+                type="button"
+                className="g-tag-plus"
+                data-no-pan
+                data-testid="topic-plus"
+                aria-label={`${c.topic.name}에 메모 쓰기`}
+                onClick={(e) => openComposer(e.currentTarget, c.topic.id)}
+              >
+                <PlusIcon />
+              </button>
             </div>
           </div>
         ))}
@@ -344,10 +366,22 @@ export function GlobeBoard({ onSelectMemo, notify }: { onSelectMemo: (memoId: st
           ))}
         </div>
       )}
-      {writing ? (
-        <GlobeComposer draft={draft} onDraft={setDraft} notify={notify} onSaved={() => closeComposer(true)} onDismiss={() => closeComposer(false)} />
-      ) : (
-        <button type="button" className="g-pen" data-no-pan data-testid="globe-write" onClick={() => setWriting(true)}>
+      <AnimatePresence>
+        {writing && (
+          <GlobeComposer
+            key="composer"
+            draft={draft}
+            onDraft={setDraft}
+            notify={notify}
+            topic={topics.find((t) => t.id === writeTo.topicId) ?? null}
+            origin={writeTo.origin}
+            onSaved={() => closeComposer(true)}
+            onDismiss={() => closeComposer(false)}
+          />
+        )}
+      </AnimatePresence>
+      {!writing && (
+        <button type="button" className="g-pen" data-no-pan data-testid="globe-write" onClick={(e) => openComposer(e.currentTarget, null)}>
           <PenIcon /> 새로 쓰기
         </button>
       )}

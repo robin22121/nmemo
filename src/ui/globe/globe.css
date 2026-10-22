@@ -62,32 +62,81 @@
 .g-board .face.emotion .face-text { font-size: 12px; -webkit-line-clamp: 3; line-clamp: 3; }
 .g-board .face.photo .face-text, .g-board .face.todo .face-text { font-size: 14px; }
 
-/* 바로 쓰기: 흐린 지구본 앞 큰 쓰기 칸 */
+/* 주제 옆 동그란 +: 펼친(정가운데) 주제에만. 누르면 여기서 쓰기 칸이 커지며 열린다 */
+.g-tag-plus {
+  position: absolute; left: calc(100% + 6px); top: 50%; width: 26px; height: 26px; margin-top: -13px; border-radius: 50%;
+  display: grid; place-items: center; color: color-mix(in srgb, var(--c) 55%, var(--ink));
+  background: rgba(255, 252, 245, 0.88); border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+  box-shadow: 0 1px 6px rgba(58, 50, 38, 0.08);
+  opacity: 0; transform: scale(0.4); pointer-events: none; transition: opacity 0.2s ease, transform 0.25s cubic-bezier(.2, 1.4, .4, 1);
+}
+/* 터치 영역은 보이는 원보다 넓게 */
+.g-tag-plus::before { content: ''; position: absolute; inset: -9px; border-radius: 50%; }
+.g-tag-plus svg { width: 15px; height: 15px; stroke-width: 2.2; }
+.g-tag-plus:active { transform: scale(0.9); }
+.g-cluster[data-lod='open'][data-e='1.00'] .g-tag-plus { opacity: 1; transform: scale(1); pointer-events: auto; }
+.g-board[data-moving='1'] .g-tag-plus, .g-board[data-write='1'] .g-tag-plus { opacity: 0; pointer-events: none; }
+
+/* 바로 쓰기: 흐린 지구본 앞, 화면 정가운데 쓰기 칸. 보드와 같은 종이빛 반투명 유리 */
 .g-dim { position: fixed; inset: 0; z-index: 44; background: rgba(246, 241, 231, 0.5); }
+.g-composer-wrap {
+  position: fixed; inset: 0; z-index: 45; height: 100dvh; display: flex; align-items: center; justify-content: center; pointer-events: none;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) 16px calc(16px + var(--safe-b));
+}
 .g-composer {
-  position: fixed; left: 14px; right: 14px; top: calc(18px + env(safe-area-inset-top, 0px)); z-index: 45;
-  display: flex; flex-direction: column; border-radius: 22px; background: #fffdf7; box-shadow: var(--shadow-lift); border: 1px solid var(--line);
+  pointer-events: auto; width: 100%; max-width: 440px; display: flex; flex-direction: column; border-radius: 26px;
+  background: rgba(255, 253, 248, 0.82); -webkit-backdrop-filter: blur(18px) saturate(1.2); backdrop-filter: blur(18px) saturate(1.2);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow: 0 1px 2px rgba(58, 50, 38, 0.06), 0 12px 40px rgba(120, 96, 60, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
+.g-composer-topic {
+  align-self: flex-start; margin: 14px 0 0 16px; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px;
+  font-size: 13px; font-weight: 700; color: color-mix(in srgb, var(--c) 45%, var(--ink)); background: color-mix(in srgb, var(--c) 16%, transparent);
+}
+.g-composer-topic i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
 .g-composer-field { position: relative; }
-.g-composer textarea { display: block; width: 100%; min-height: 38vh; resize: none; border: 0; outline: none; background: transparent; padding: 18px 18px 8px; font-size: 18px; line-height: 1.5; }
-.g-fake { position: absolute; left: 18px; top: 18px; font-size: 18px; line-height: 1.5; color: var(--ink-soft); pointer-events: none; display: flex; align-items: center; gap: 2px; }
-.g-caret { display: inline-block; width: 2px; height: 1.2em; background: #5b7cfa; animation: g-blink 1.05s steps(1) infinite; }
+.g-composer textarea { display: block; width: 100%; min-height: 26vh; max-height: 46vh; resize: none; border: 0; outline: none; background: transparent; padding: 16px 20px 8px; font-size: 18px; line-height: 1.55; color: var(--ink); }
+.g-composer textarea::placeholder { color: rgba(122, 111, 93, 0.6); }
+.g-fake { position: absolute; left: 20px; top: 16px; font-size: 18px; line-height: 1.55; color: rgba(122, 111, 93, 0.6); pointer-events: none; display: flex; align-items: center; gap: 2px; }
+.g-caret { display: inline-block; width: 2px; height: 1.2em; background: color-mix(in srgb, var(--c) 60%, var(--ink-soft)); animation: g-blink 1.05s steps(1) infinite; }
 @keyframes g-blink { 50% { opacity: 0; } }
-.g-listen { position: absolute; left: 12px; right: 12px; bottom: 6px; padding: 8px 12px; border-radius: 12px; background: var(--paper-2); font-size: 14px; display: flex; gap: 8px; align-items: center; }
-.g-composer-bar { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px 10px 10px; }
-.g-plus-wrap { display: flex; align-items: center; gap: 8px; }
-.g-plus { width: 42px; height: 42px; border-radius: 50%; background: var(--postit); font-size: 24px; line-height: 1; box-shadow: var(--shadow); }
-.g-choice { display: inline-flex; align-items: center; gap: 6px; height: 42px; padding: 0 14px; border-radius: 999px; background: var(--paper-2); font-size: 15px; touch-action: none; user-select: none; -webkit-user-select: none; }
-.g-choice svg { width: 18px; height: 18px; }
-.g-send { width: 42px; height: 42px; border-radius: 50%; background: var(--ink); color: #fffdf7; display: grid; place-items: center; }
-.g-send:disabled { opacity: 0.3; }
-.g-send svg { width: 20px; height: 20px; }
-.g-pen {
-  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(16px + var(--safe-b)); z-index: 3;
-  display: inline-flex; align-items: center; gap: 6px; padding: 11px 20px; border-radius: 999px;
-  background: var(--ink); color: #fffdf7; font-size: 15px; box-shadow: var(--shadow-lift);
+.g-listen { position: absolute; left: 12px; right: 12px; bottom: 6px; padding: 8px 12px; border-radius: 12px; background: rgba(239, 232, 217, 0.9); font-size: 14px; display: flex; gap: 8px; align-items: center; }
+.g-composer-bar { display: flex; align-items: center; justify-content: space-between; padding: 4px 12px 12px; }
+.g-plus-wrap { display: flex; align-items: center; gap: 6px; }
+.g-plus {
+  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--ink-soft);
+  background: rgba(255, 255, 255, 0.6); border: 1px solid var(--line); transition: transform 0.2s ease, background 0.2s ease;
 }
-.g-pen svg { width: 18px; height: 18px; }
+.g-plus svg { width: 20px; height: 20px; }
+.g-plus-wrap.open .g-plus { background: rgba(239, 232, 217, 0.9); }
+.g-choice {
+  display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px; border-radius: 999px; color: var(--ink);
+  background: rgba(255, 255, 255, 0.6); border: 1px solid var(--line); font-size: 14.5px;
+  touch-action: none; user-select: none; -webkit-user-select: none; animation: g-pop 0.22s cubic-bezier(.2, 1.4, .4, 1) both;
+}
+.g-choice + .g-choice { animation-delay: 0.04s; }
+@keyframes g-pop { from { opacity: 0; transform: translateX(-8px) scale(0.85); } }
+.g-choice svg { width: 18px; height: 18px; }
+.g-send {
+  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--c) 78%, var(--ink)); color: #fffdf7; box-shadow: 0 4px 12px rgba(58, 50, 38, 0.18);
+  transition: opacity 0.2s ease, transform 0.2s ease, background 0.2s ease;
+}
+.g-send:disabled { background: rgba(239, 232, 217, 0.9); color: rgba(122, 111, 93, 0.55); box-shadow: none; }
+.g-send:not(:disabled):active { transform: scale(0.92); }
+.g-send svg { width: 20px; height: 20px; }
+/* 새로 쓰기: 보드 위에 떠 있는 종이빛 유리 알약 */
+.g-pen {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(18px + var(--safe-b)); z-index: 3;
+  display: inline-flex; align-items: center; gap: 7px; padding: 12px 22px; border-radius: 999px;
+  color: var(--ink); font-size: 15px; font-weight: 600;
+  background: rgba(255, 253, 248, 0.78); -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2);
+  border: 1px solid rgba(255, 255, 255, 0.8); box-shadow: 0 1px 2px rgba(58, 50, 38, 0.06), 0 8px 24px rgba(120, 96, 60, 0.16);
+  animation: g-rise 0.3s ease both;
+}
+.g-pen:active { transform: translateX(-50%) scale(0.96); }
+@keyframes g-rise { from { opacity: 0; transform: translate(-50%, 8px); } }
+.g-pen svg { width: 18px; height: 18px; color: var(--ink-soft); }
 
 /* 정돈 대기 칩(쓰기 칸이 있던 위쪽 가운데) → 정돈되면 여기서 제 주제로 날아간다 */
 .g-pending { position: absolute; left: 0; right: 0; top: calc(14px + env(safe-area-inset-top, 0px)); z-index: 4; display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; padding: 0 16px; pointer-events: none; }
@@ -101,5 +150,5 @@
 .g-flights { position: fixed; inset: 0; pointer-events: none; z-index: 20; overflow: hidden; }
 .g-card.g-incoming { visibility: hidden; }
 @media (prefers-reduced-motion: reduce) {
-  .g-caret, .g-pchip { animation: none; }
+  .g-caret, .g-pchip, .g-choice, .g-pen { animation: none; }
 }

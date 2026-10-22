@@ -9,6 +9,8 @@ export interface NewMemoInput {
   input: InputType;
   text: string;
   photo?: Blob;
+  /** 주제 옆 +로 쓴 메모: 그 주제에 고정(정돈은 특성·링크만 채운다) */
+  topicId?: string;
 }
 
 export function makeTopic(name: string, summary: string, existing: Pick<Topic, 'color'>[], now: number, centerKeywords: string[] = []): Topic {
@@ -33,7 +35,8 @@ export async function addMemo(repo: Repo, input: NewMemoInput, now = Date.now())
     input: input.input,
     text: input.text.trim(),
     photo: input.photo,
-    topicLocked: false,
+    ...(input.topicId ? { topicId: input.topicId } : {}),
+    topicLocked: !!input.topicId,
     status: 'pending',
     attempts: 0,
   };

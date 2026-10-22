@@ -50,3 +50,24 @@ test('지구본: 흐린 지구본을 탭하면 저장 없이 닫히고, 쓰던 �
   await page.getByTestId('globe-write').click();
   await expect(input).toHaveValue('아직 다 못 쓴 생각');
 });
+
+test('지구본: 가운데 주제 옆 +를 누르면 쓰기 칸이 열리고, 쓴 메모는 그 주제에 붙는다(잠김)', async ({ page }) => {
+  await page.goto('/?demo=1&reset=1&write=0');
+  await expect(page.getByTestId('board-info')).toHaveAttribute('data-cards', '40');
+  const plus = page.locator('.g-cluster[data-lod="open"] [data-testid="topic-plus"]');
+  await expect(plus).toHaveCount(1);
+  await expect(plus).toBeVisible();
+  const topicId = await plus.evaluate((el) => el.closest('[data-topic-id]')!.getAttribute('data-topic-id'));
+  await plus.click();
+  await expect(page.getByTestId('composer-topic')).toBeVisible();
+  await page.getByTestId('globe-composer-input').fill('전혀 상관없는 주말 등산 계획');
+  await page.getByTestId('globe-send').click();
+  await expect(page.getByTestId('globe-composer')).toHaveCount(0);
+  await expect(page.getByTestId('board-info')).toHaveAttribute('data-cards', '41', { timeout: 10_000 });
+  const m = await page.evaluate(async () => {
+    const { db } = (window as unknown as { __kk: { db: { memos: { toArray(): Promise<{ text: string; topicId: string; topicLocked: boolean }[]> } } } }).__kk;
+    return (await db.memos.toArray()).find((x) => x.text.startsWith('전혀 상관없는 주말'))!;
+  });
+  expect(m.topicId).toBe(topicId);
+  expect(m.topicLocked).toBe(true);
+});
