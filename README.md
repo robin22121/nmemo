@@ -9,7 +9,8 @@
 ## 실행
 
 ```bash
-cd kkeujeogim
+git clone https://github.com/robin22121/nmemo.git
+cd nmemo
 npm install
 npm run dev          # http://localhost:5173  (/api/* 도 같은 서버에서 동작)
 ```
@@ -38,7 +39,7 @@ npm run dev          # http://localhost:5173  (/api/* 도 같은 서버에서 �
 AI를 쓰려면 **서버 환경변수**로만 키를 넣습니다. 클라이언트 번들에는 들어가지 않습니다.
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...   # 또는 kkeujeogim/.env.local 에 ANTHROPIC_API_KEY=...
+export ANTHROPIC_API_KEY=sk-ant-...   # 또는 저장소 루트의 .env.local 에 ANTHROPIC_API_KEY=...
 npm run dev                            # /api/health → {"ai":true}
 ```
 
@@ -73,7 +74,7 @@ tests/unit, tests/e2e
 
 ## 배포 메모 (2차)
 
-`functions/index.ts`는 `server/organize.ts`를 감싼 Cloud Functions(2세대, Node 22) 예시입니다. 루트의 기존 `firebase.json`은 건드리지 않았으므로 다음은 직접 연결해야 합니다.
+`functions/index.ts`는 `server/organize.ts`를 감싼 Cloud Functions(2세대, Node 22) 예시입니다. 이 저장소에는 아직 `firebase.json`이 없으므로 다음은 직접 연결해야 합니다.
 
 1. `ANTHROPIC_API_KEY`를 Functions 비밀로 등록 (`firebase functions:secrets:set ANTHROPIC_API_KEY`).
 2. `functions/`가 `../server`와 `../src/core`를 import하므로 배포 전에 빌드 산출물에 함께 담기(`tsconfig.json`의 `rootDir: ".."` 참고).
