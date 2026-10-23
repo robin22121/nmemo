@@ -171,23 +171,25 @@ test('③ 390px 끌기 1회 = 60±5°, 손 뗀 뒤 1.5초 안에 멈추고 되�
   expect(Math.abs(Number(await board.getAttribute('data-delta')))).toBeLessThan(0.5);
 });
 
-test('④ 펼치기: 이름표가 화면 중앙 ±8px, 카드 고리 전체가 세이프 영역 안, 배경 자전 중 카드 위에 다른 이름표 글자 없음', async ({ page }) => {
+test('④ 펼치기(D37 위아래 나누기): 이름이 위쪽 제목 자리, 거품이 화면 안·+ 버튼 위, 구는 아래로 내려가 r 140, 배경 자전 중 거품 위에 다른 이름표 글자 없음', async ({ page }) => {
   const board = await boot(page, 'focus');
   const front = (await board.getAttribute('data-front'))!;
   const tb = (await page.locator(`.g-cluster[data-topic-id="${front}"] .g-tag`).boundingBox())!;
   expect(Math.abs(tb.x + tb.width / 2 - 195)).toBeLessThanOrEqual(8);
-  expect(Math.abs(tb.y + tb.height / 2 - 422)).toBeLessThanOrEqual(8);
+  expect(Math.abs(tb.y + tb.height / 2 - 30)).toBeLessThanOrEqual(8);
   const cards = await page.locator(`.g-cluster[data-topic-id="${front}"] .g-card .card`).evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON() as DOMRect));
   expect(cards.length).toBeGreaterThan(3);
   const plus = (await page.getByTestId('plus-button').boundingBox())!;
   for (const c of cards) {
     expect(c.left).toBeGreaterThanOrEqual(0);
     expect(c.right).toBeLessThanOrEqual(390);
-    expect(c.top).toBeGreaterThanOrEqual(0);
+    expect(c.top).toBeGreaterThanOrEqual(tb.y + tb.height);
     expect(c.bottom).toBeLessThanOrEqual(plus.y);
   }
-  // 뒤 구는 작아지고(반지름 < 하늘 상태) 계속 돈다
-  expect((await sphereOf(page)).r).toBeLessThan(390 / 2 - 18 - 10);
+  // 구는 아래로 내려가 작아지고(r 140, + 버튼 위) 계속 돈다
+  const sp = await sphereOf(page);
+  expect(Math.abs(sp.r - 140)).toBeLessThanOrEqual(2);
+  expect(sp.bottom).toBeLessThan(plus.y);
   await page.waitForTimeout(4300);
   let seen = 0;
   for (let k = 0; k < 10; k++) {
@@ -203,7 +205,7 @@ test('④ 펼치기: 이름표가 화면 중앙 ±8px, 카드 고리 전체가 �
     await page.waitForTimeout(300);
   }
   await expect(board).toHaveAttribute('data-front', front);
-  console.log(`④ tag center=(${(tb.x + tb.width / 2).toFixed(1)}, ${(tb.y + tb.height / 2).toFixed(1)}) cards=${cards.length} background labels seen=${seen}`);
+  console.log(`④ title center=(${(tb.x + tb.width / 2).toFixed(1)}, ${(tb.y + tb.height / 2).toFixed(1)}) bubbles=${cards.length} sphere r=${sp.r.toFixed(1)} background labels seen=${seen}`);
 });
 
 test('⑤ 30개·집중·자전 10초 rAF 평균 ≥ 50fps, 움직이는 지구본 요소에 filter 없음', async ({ page }) => {
@@ -267,10 +269,12 @@ test('D36 집중 상태 끌기: 이웃 주제가 끄는 만큼 떠오르고(중�
   const board = await boot(page, 'focus');
   const old = (await board.getAttribute('data-front'))!;
   expect((await liftsOf(page))[old]).toBe(1);
-  await page.mouse.move(300, 400);
+  // 거품 위에서 시작하면 돌지 않으므로(D37) 아래 구에서 끈다
+  const y = (await sphereOf(page)).cy;
+  await page.mouse.move(300, y);
   await page.mouse.down();
   // 반 간격(약 37px): 펼쳐져 있던 주제와 다가오는 주제가 둘 다 일부만 떠 있다
-  await page.mouse.move(263, 400, { steps: 6 });
+  await page.mouse.move(263, y, { steps: 6 });
   await page.waitForTimeout(400);
   const mid = await liftsOf(page);
   const partial = Object.entries(mid).filter(([, v]) => v > 0.05 && v < 0.95);
@@ -290,7 +294,7 @@ test('D36 집중 상태 끌기: 이웃 주제가 끄는 만큼 떠오르고(중�
   console.log(`D36 mid tags overlap=${overlap} op=${ta.tagOp},${tb2.tagOp}`);
   expect(overlap && ta.tagOp > 0.5 && tb2.tagOp > 0.5).toBe(false);
   // 한 간격(75px)까지 끌면 정면 주제가 바뀐다(손가락은 아직 대고 있음)
-  await page.mouse.move(225, 400, { steps: 6 });
+  await page.mouse.move(225, y, { steps: 6 });
   // 새 주제 카드를 처음 그리는 프레임이 헤드리스에서 길어(한 번만) 시간 대신 값이 따라올 때까지 기다린다
   await expect.poll(async () => (await liftsOf(page))[old]!).toBeLessThan(0.1);
   const next = (await board.getAttribute('data-front'))!;
@@ -307,7 +311,7 @@ test('D36 집중 상태 끌기: 이웃 주제가 끄는 만큼 떠오르고(중�
   await expect(page.locator(`.g-cluster[data-topic-id="${next}"] .g-card .card`).first()).toBeVisible();
   for (const o of await page.locator(`.g-cluster[data-topic-id="${next}"] .g-card`).evaluateAll((els) => els.map((e) => Number(getComputedStyle(e).opacity)))) expect(o).toBe(1);
   await expect(page.locator(`.g-cluster[data-topic-id="${old}"] .g-card .card`).first()).toBeHidden();
-  // 새 주제 이름표가 화면 가운데
+  // 새 주제 이름이 제목 자리(가로 가운데)
   const tb = (await page.locator(`.g-cluster[data-topic-id="${next}"] .g-tag`).boundingBox())!;
   expect(Math.abs(tb.x + tb.width / 2 - 195)).toBeLessThanOrEqual(8);
 });
@@ -317,9 +321,10 @@ test('D36 배경 자전으로 한참 돈 뒤 끌어도 펼친 주제가 튀지 �
   const old = (await board.getAttribute('data-front'))!;
   await page.waitForTimeout(4300 + 3000); // 자전이 다시 시작해 몇 도 돈 뒤
   await expect(board).toHaveAttribute('data-front', old); // 자전은 펼친 주제를 바꾸지 않는다
-  await page.mouse.move(300, 400);
+  const y = (await sphereOf(page)).cy;
+  await page.mouse.move(300, y);
   await page.mouse.down();
-  await page.mouse.move(290, 400, { steps: 2 });
+  await page.mouse.move(290, y, { steps: 2 });
   await page.waitForTimeout(100);
   // 10px(1.6°)만 끌었으니 펼친 주제는 거의 그대로
   expect((await liftsOf(page))[old]!).toBeGreaterThan(0.8);

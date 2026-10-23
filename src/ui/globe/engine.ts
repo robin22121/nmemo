@@ -1,13 +1,11 @@
-import { globeViewport, GLOBE, planLabels, projectGlobe, wrapDeg, type GlobeViewport, type RingBox, type ScreenBox } from '../../core/layout/globe';
+import { globeViewport, GLOBE, planLabels, projectGlobe, splitGeom, wrapDeg, type GlobeViewport, type ScreenBox } from '../../core/layout/globe';
 import { MOTION } from './config';
 
 export interface GlobeCard {
   el: HTMLElement;
-  /** 펼친 자리(이름표 중심 기준)와 접힌 점 자리 */
+  /** 펼친 거품 자리(제목 = 펼친 이름 중심 기준). 접히면 이름 자리(0, 0)로 빨려 든다 */
   rx: number;
   ry: number;
-  dx: number;
-  dy: number;
 }
 
 export interface GlobeItem {
@@ -17,19 +15,21 @@ export interface GlobeItem {
   /** 도는 무리 컨테이너(원점 = 이름표 중심) */
   el: HTMLElement;
   tag: HTMLElement | null;
+  /** 구 위에 남는 주제 점(펼쳐도 구 위 제자리에 강조 점으로 남는다, D37) */
+  pt: HTMLElement | null;
   cards: GlobeCard[];
-  /** 펼쳤을 때 카드 크기 */
-  k: number;
+  /** 펼친 거품 지름(px) */
+  d: number;
   /** 처음 정가운데 둘 후보(가장 큰 주제) */
   weight: number;
-  /** 펼친 고리가 차지하는 범위(이름표 중심 기준, 엔진이 채운다) */
-  ext?: { l: number; r: number; t: number; b: number };
 }
 
 export interface EngineOptions {
   /** 짧게 눌렀다 뗌. (x, y)는 화면 좌표 */
   onTap: (target: Element, x: number, y: number) => void;
   shouldIgnore: (target: Element) => boolean;
+  /** 이 위에서 시작한 동작은 탭·길게 누르기만(끌어도 돌지 않는다, D37 거품) */
+  holdOnly?: (target: Element) => boolean;
   /** 회전·전환이 멈췄을 때(정가운데 주제 id) */
   onSettle?: (frontId: string | null) => void;
   /** liftMs 동안 가만히 누름. true를 돌려주면 들어 올림(끌기) 모드: 이후 움직임은 회전 대신 onDrag로 간다 */
@@ -59,11 +59,6 @@ export function measureBoard(root: HTMLElement): { w: number; h: number } {
     w: firstPositive(root.clientWidth, r?.width, vv?.width, typeof window === 'undefined' ? 0 : window.innerWidth),
     h: firstPositive(root.clientHeight, r?.height, vv?.height, typeof window === 'undefined' ? 0 : window.innerHeight),
   };
-}
-
-/** 이름표를 화면 정가운데 둘 때 카드가 들어갈 화면 안 범위(이름표 중심 기준). 아래는 + 버튼 여백 + safe-area 아래 inset, 위는 safe-area 위 inset */
-export function boxOf(w: number, h: number, inset = 0, insetTop = 0): RingBox {
-  return { left: -w / 2 + 8, right: w / 2 - 8, top: -h / 2 + MOTION.topPad + insetTop, bottom: h / 2 - MOTION.bottomPad - inset };
 }
 
 /**
@@ -139,11 +134,14 @@ export function frontOf(ps: { delta: number; z: number }[]): number {
 /** 크기 0 측정 뒤 다시 재는 최대 프레임 수 */
 const MEASURE_RETRIES = 60;
 
-/** 접힌 점에서 펼친 칸으로 갈 때 카드 크기(펼침 0 근처) */
+/** 이름 자리에서 아치로 퍼질 때 거품 크기(펼침 0 근처) */
 const DOT_CARD = 0.16;
 
-/** 떠오름이 이 값을 넘어야 카드 고리가 피어나기 시작한다(D36) */
+/** 떠오름이 이 값을 넘어야 거품이 피어나기 시작한다(D36: 끄는 중간에는 이름만) */
 const CARD_FROM = 0.65;
+
+/** 두 주제가 함께 떠 있을 때(주제 바꾸는 중) 이름 글자는 떠오름이 이 값을 넘은 쪽만 보인다 → 중간 지점에서 이름 ≤ 1(D37 ④) */
+const TAG_FROM = 0.5;
 
 const smooth01 = (x: number) => {
   const c = Math.max(0, Math.min(1, x));
@@ -153,8 +151,9 @@ const smooth01 = (x: number) => {
 /**
  * 화면 안의 작은 지구본 엔진(D35). 구는 세로축으로만 돈다(φ). 끌기는 좌우만, 자전은 앞면 주제가 왼쪽 → 오른쪽으로 흐르게.
  * 프레임마다 무리 컨테이너 N개에 transform·opacity·z-index를 직접 쓰고(React 재렌더 없음), 이름표 글자를 보일지 정한다(planLabels).
- * 집중(펼치기)하면 그 주제만 구에서 떠올라 화면 가운데 고정 레이어로 오고(lift 0→1) 카드가 둘레에 펼쳐진다.
- * 구는 뒤에서 작고 연하게 계속 돈다(D31). 닫으면 구 위 제자리로 돌아간다.
+ * 집중(펼치기)하면 위아래로 나뉜다(D37): 구는 아래(+ 버튼 위)로 내려가며 작아지고, 펼친 주제의 점은 구 위에 강조 점으로 남고
+ * 이름은 그 점에서 위쪽 제목 자리로 올라가며(lift 0→1), 거품이 이름에서 구 위 아치로 퍼진다.
+ * 구는 계속 천천히 돈다(D31). 닫으면 거꾸로(거품이 이름으로, 이름이 점으로, 구는 원래 크기·자리로).
  * 집중 상태에서 끌면 구가 돌며 펼친 주제는 구로 접혀 돌아가고 정면으로 다가오는 주제가 끄는 만큼 떠올라 펼쳐진다(D36).
  * 손을 떼면 그 속도를 이어받아 관성으로 멈출 곳에 가장 가까운 주제로 감속하며 멈춘다(임계 감쇠 스프링, D34).
  */
@@ -202,7 +201,6 @@ export class GlobeEngine {
   private state = new WeakMap<HTMLElement, { lod?: Lod; p: number }>();
   /** 이름표 크기(배율 1, px) */
   private tagSize = new WeakMap<HTMLElement, { w: number; h: number }>();
-  private cardSize = new WeakMap<HTMLElement, { w: number; h: number }>();
   private off: () => void;
 
   constructor(private root: HTMLElement, private opts: EngineOptions) {
@@ -252,13 +250,6 @@ export class GlobeEngine {
   }
 
   setItems(items: GlobeItem[]) {
-    for (const it of items) {
-      const hw = (GLOBE.cardW * it.k) / 2, hh = (GLOBE.cardH * it.k) / 2;
-      const xs = it.cards.map((c) => c.rx), ys = it.cards.map((c) => c.ry);
-      it.ext = it.cards.length
-        ? { l: Math.min(...xs) - hw, r: Math.max(...xs) + hw, t: Math.min(...ys) - hh, b: Math.max(...ys) + hh }
-        : { l: -GLOBE.labelW / 2, r: GLOBE.labelW / 2, t: -GLOBE.labelH / 2, b: GLOBE.labelH / 2 };
-    }
     this.items = items;
     this.state = new WeakMap(); // React가 다시 그린 카드 자리를 모두 다시 쓴다
     this.sphere = this.root.querySelector<HTMLElement>('.g-sphere');
@@ -396,7 +387,7 @@ export class GlobeEngine {
 
   /** 동작 줄이기: 진행값을 바로 목표로 */
   private snapProgress() {
-    this.f = this.focus && !this.write ? 1 : 0;
+    this.f = this.focus ? 1 : 0;
     for (const it of this.items) this.lifts.set(it.id, this.liftTarget(it.id));
   }
 
@@ -474,12 +465,13 @@ export class GlobeEngine {
         this.endSteer();
       } else busy = true;
     }
-    // 진행값: 뒤 구 축소·흐림(f), 주제별 떠오름(lift). 약 0.4초
-    const ft = this.focus && !this.write ? 1 : 0;
+    // 진행값: 구 내려가며 작아짐(f), 주제별 떠오름(lift). 펼침·닫기는 splitMs 동안 일정하게(그리는 쪽에서 감속 곡선, D37 ④ ≤ 400ms)
+    const step = dt / (MOTION.splitMs / 1000);
+    // 쓰기 창·자판 중에도 구 자리·크기는 그대로(D37: 구 중심 고정). 펼친 이름·거품만 구로 접힌다(liftTarget)
+    const ft = this.focus ? 1 : 0;
     if (this.f !== ft) {
-      this.f += (ft - this.f) * Math.min(1, dt * 9);
-      if (Math.abs(this.f - ft) < 0.004) this.f = ft;
-      else busy = true;
+      this.f = ft > this.f ? Math.min(ft, this.f + step) : Math.max(ft, this.f - step);
+      if (this.f !== ft) busy = true;
     }
     // 끄는 중(D36)이면 떠오름은 집중 경도를 따라(손을 바짝 따르게 빨리), 아니면 펼친 주제 1·나머지 0
     const steerT = this.steer ? this.steerTargets() : null;
@@ -490,9 +482,12 @@ export class GlobeEngine {
     this.items.forEach((it, i) => {
       const cur = this.lifts.get(it.id) ?? 0, lt = steerT ? steerT[i]! : this.liftTarget(it.id);
       if (cur === lt) return;
-      let nv = cur + (lt - cur) * Math.min(1, dt * (steerT ? 16 : 9));
-      if (Math.abs(nv - lt) < 0.004) nv = lt;
-      else busy = true;
+      let nv: number;
+      if (steerT) {
+        nv = cur + (lt - cur) * Math.min(1, dt * 16);
+        if (Math.abs(nv - lt) < 0.004) nv = lt;
+      } else nv = lt > cur ? Math.min(lt, cur + step) : Math.max(lt, cur - step);
+      if (nv !== lt) busy = true;
       this.lifts.set(it.id, nv);
     });
     // 자전: φ가 줄어 앞면 주제가 왼쪽 → 오른쪽으로 흐른다(왼쪽 테두리에서 나타나 오른쪽 테두리로 사라짐)
@@ -533,29 +528,20 @@ export class GlobeEngine {
     return s;
   }
 
-  /** 펼친 카드 겉모양 크기(배율 1). 처음 한 번 잰다(못 재면 0 → 칸 크기를 쓴다) */
-  private cardSizeOf(el: HTMLElement): { w: number; h: number } {
-    let s = this.cardSize.get(el);
-    if (!s) {
-      const face = el.querySelector<HTMLElement>(".card") ?? el;
-      s = { w: face.offsetWidth, h: face.offsetHeight };
-      if (s.w > 0 && s.h > 0) this.cardSize.set(el, s);
-    }
-    return s;
-  }
-
   private render() {
     if (!this.w || !this.h) return; // 크기를 못 쟀으면 그리지 않는다(NaN 방지)
-    const base = globeViewport(this.w, this.h, MOTION.bottomPad + this.insetB);
-    // 집중 상태에서는 뒤 구가 작고 연해진다(중심은 그대로)
-    const zoom = 1 - (1 - GLOBE.focusZoom) * this.f;
-    const vp = { ...base, r: base.r * zoom };
-    const dim = 1 - (1 - GLOBE.focusDim) * this.f;
-    this.drawSphere(vp, dim);
+    const reserve = MOTION.bottomPad + this.insetB;
+    const base = globeViewport(this.w, this.h, reserve);
+    const split = splitGeom(this.w, this.h, reserve, this.insetT);
+    // 집중 상태(D37): 구가 아래(+ 버튼 위)로 내려가며 작아지고(r 140) 연해진다. 감속 곡선으로
+    const fe = smooth01(this.f);
+    const vp: GlobeViewport = { cx: base.cx, cy: base.cy + (split.globe.cy - base.cy) * fe, r: base.r + (split.globe.r - base.r) * fe };
+    const dim = 1 - (1 - GLOBE.focusDim) * fe;
+    this.drawSphere(vp, base.r, dim);
     const ps = this.items.map((it) => projectGlobe(it.lambda, it.beta, this.phi, vp));
     const lifts = this.items.map((it) => this.lifts.get(it.id) ?? 0);
-    // 가운데 레이어: 이름표가 화면 정가운데
-    const lx = this.w / 2, ly = this.h / 2;
+    // 펼친 이름은 위쪽 제목 자리
+    const lx = split.title.x, ly = split.title.y;
     let focusI = this.focus ? this.items.findIndex((it) => it.id === this.focusId) : -1;
     if (this.focus && focusI < 0 && this.items.length) {
       // 펼친 주제가 사라졌으면(메모를 모두 옮김) 정면 주제로
@@ -563,18 +549,14 @@ export class GlobeEngine {
       this.focusId = this.items[focusI]!.id;
     }
     const front = this.focus && focusI >= 0 ? focusI : frontOf(ps);
-    // 펼친 이름표·카드 자리: 뒤 구 이름표 글자가 그 위에 겹치지 않게 막는다
+    // 펼친 이름·거품 자리: 뒤 구 이름표 글자가 그 위에 겹치지 않게 막는다
     const block: ScreenBox[] = [];
     this.items.forEach((it, i) => {
       if (lifts[i]! < 0.5) return;
       const ts = this.tagSizeOf(it);
       block.push({ l: lx - ts.w / 2, r: lx + ts.w / 2, t: ly - ts.h / 2, b: ly + ts.h / 2 });
-      for (const c of it.cards) {
-        // 칸 크기와 실제 카드 크기 중 큰 쪽(감정 카드·사진 카드는 칸보다 클 수 있다)
-        const cs = this.cardSizeOf(c.el);
-        const hw = (Math.max(GLOBE.cardW, cs.w) * it.k) / 2 + GLOBE.cardGap, hh = (Math.max(GLOBE.cardH, cs.h) * it.k) / 2 + GLOBE.cardGap;
-        block.push({ l: lx + c.rx - hw, r: lx + c.rx + hw, t: ly + c.ry - hh, b: ly + c.ry + hh });
-      }
+      const hd = it.d / 2 + GLOBE.cardGap;
+      for (const c of it.cards) block.push({ l: lx + c.rx - hd, r: lx + c.rx + hd, t: ly + c.ry - hd, b: ly + c.ry + hd });
     });
     const shown = planLabels(
       this.items.map((it, i) => {
@@ -585,40 +567,16 @@ export class GlobeEngine {
       vp,
       block,
     );
-    // 두 주제가 함께 떠 있을 때(끌어 바꾸는 중·탭 전환) 이름표 글자가 겹치지 않게(D36):
-    // 끄는 중이면 경도 순서대로(앞 주제 왼쪽·다가오는 주제 오른쪽) 좌우로 벌리고, 그래도 겹치는 만큼 덜 뜬 쪽 글자를 흐린다
-    const sx = this.items.map(() => 0);
+    // 두 주제가 함께 떠 있을 때(끌어 바꾸는 중·탭 전환): 이름 글자는 TAG_FROM을 넘게 뜬 쪽만 보이며 교차한다(D37: 중간엔 이름 하나 이하).
+    // 한 주제만 뜨고 내릴 때(펼침·닫기)는 이름이 점 ↔ 제목 자리를 그대로 오간다
     const tagAlpha = this.items.map(() => 1);
-    let a = -1, b = -1;
-    lifts.forEach((l, i) => {
-      if (l <= 0.001) return;
-      if (a < 0 || l > lifts[a]!) [a, b] = [i, a];
-      else if (b < 0 || l > lifts[b]!) b = i;
-    });
-    if (a >= 0 && b >= 0) {
-      const at = (i: number) => {
-        const p = ps[i]!, e = smooth01(lifts[i]!), ts = this.tagSizeOf(this.items[i]!), sc = p.scale + (1 - p.scale) * e;
-        return { x: p.x + (lx - p.x) * e, y: p.y + (ly - p.y) * e, w: ts.w * sc, h: ts.h * sc };
-      };
-      const ref = this.phi + (this.steer ? this.fOff : 0);
-      const [l, r] = wrapDeg(this.items[a]!.lambda - ref) <= wrapDeg(this.items[b]!.lambda - ref) ? [a, b] : [b, a];
-      const L = at(l), R = at(r);
-      if (this.steer && Math.abs(L.y - R.y) < (L.h + R.h) / 2) {
-        const need = Math.max(0, (L.w + R.w) / 2 + 6 - (R.x - L.x)) * smooth01(Math.min(lifts[l]!, lifts[r]!) / 0.35);
-        sx[l] = -need / 2;
-        sx[r] = need / 2;
-      }
-      // 남은 겹침 비율(작은 상자 기준)만큼 덜 뜬 쪽 글자를 흐린다. 겹치지 않으면 그대로
-      const ox = Math.max(0, Math.min(L.x + sx[l]! + L.w / 2, R.x + sx[r]! + R.w / 2) - Math.max(L.x + sx[l]! - L.w / 2, R.x + sx[r]! - R.w / 2));
-      const oy = Math.max(0, Math.min(L.y + L.h / 2, R.y + R.h / 2) - Math.max(L.y - L.h / 2, R.y - R.h / 2));
-      const ov = Math.min(1, (ox * oy) / Math.max(1, Math.min(L.w * L.h, R.w * R.h)));
-      tagAlpha[b] = 1 - ov * (1 - smooth01((lifts[b]! - 0.05) / 0.3));
-    }
+    const up = lifts.filter((l) => l > 0.001).length;
+    if (up >= 2) lifts.forEach((l, i) => (tagAlpha[i] = l > 0.001 ? smooth01((l - TAG_FROM) / (1 - TAG_FROM) / 0.4) : 1));
     this.items.forEach((it, i) => {
       const p = ps[i]!;
       const lift = lifts[i]!;
       const e = smooth01(lift);
-      let x = p.x + (lx - p.x) * e + sx[i]!, y = p.y + (ly - p.y) * e;
+      let x = p.x + (lx - p.x) * e, y = p.y + (ly - p.y) * e;
       let scale = p.scale + (1 - p.scale) * e;
       if (it.tag) {
         const ta = tagAlpha[i]! >= 0.999 ? '' : tagAlpha[i]!.toFixed(3);
@@ -640,22 +598,26 @@ export class GlobeEngine {
       const lod: Lod = lift > 0.001 ? 'open' : p.z <= 0 ? 'back' : shown[i] ? 'label' : 'dot';
       if (st.lod !== lod) it.el.dataset.lod = lod;
       if (st.p !== lift) it.el.dataset.lift = lift.toFixed(3);
+      if (lod === 'open' && it.pt) {
+        // 펼친 주제의 점은 구 위 제자리에 남는다(무리는 제목 쪽으로 올라가니 그만큼 되돌려 놓는다)
+        const k = scale > 0 ? 1 / scale : 1;
+        it.pt.style.transform = `translate(${((p.x - x) * k).toFixed(1)}px, ${((p.y - y) * k).toFixed(1)}px) scale(${(p.scale * k).toFixed(3)})`;
+      } else if (st.lod === 'open' && it.pt) it.pt.style.transform = '';
       if (lod === 'open' && (Math.abs(st.p - lift) > 0.0005 || st.lod !== 'open')) {
-        // 이름표 자리 ↔ 둘레 칸. 카드마다 조금씩 시차(빨려 들어갈 때 바깥 칸부터).
-        // 카드는 떠오름 끝 부분(0.65~1)에서만 피어난다(D36: 끄는 중간에는 이름표만 움직여 고리 두 개가 엉키지 않게)
+        // 이름 자리 ↔ 아치. 거품마다 조금씩 시차(빨려 들어갈 때 바깥 것부터).
+        // 거품은 떠오름 끝 부분(0.65~1)에서만 피어난다(D36: 끄는 중간에는 이름만 움직여 두 주제 거품이 엉키지 않게)
         const n = it.cards.length;
         const cl = smooth01((lift - CARD_FROM) / (1 - CARD_FROM));
         const co = cl.toFixed(3);
         it.cards.forEach((c, j) => {
           if (c.el.style.opacity !== co) c.el.style.opacity = co;
           const ce = smooth01(cl * 1.3 - (0.3 * j) / Math.max(1, n));
-          const cs = DOT_CARD + (it.k - DOT_CARD) * ce;
-          const cx = c.dx + (c.rx - c.dx) * ce, cy = c.dy + (c.ry - c.dy) * ce;
-          c.el.style.transform = `translate3d(${cx.toFixed(1)}px, ${cy.toFixed(1)}px, 0) scale(${cs.toFixed(3)})`;
+          const cs = DOT_CARD + (1 - DOT_CARD) * ce;
+          c.el.style.transform = `translate3d(${(c.rx * ce).toFixed(1)}px, ${(c.ry * ce).toFixed(1)}px, 0) scale(${cs.toFixed(3)})`;
         });
       } else if (lod !== 'open' && st.lod === 'open') {
         for (const c of it.cards) {
-          c.el.style.transform = `translate3d(${c.dx}px, ${c.dy}px, 0)`;
+          c.el.style.transform = 'translate3d(0px, 0px, 0)';
           c.el.style.opacity = '';
         }
       }
@@ -667,22 +629,29 @@ export class GlobeEngine {
     r.dataset.delta = front >= 0 ? Math.abs(wrapDeg(this.items[front]!.lambda - this.phi)).toFixed(2) : '';
     r.dataset.settled = this.settled ? '1' : '0';
     if (r.dataset.mode !== (this.focus ? 'focus' : 'sky')) r.dataset.mode = this.focus ? 'focus' : 'sky';
+    // 주제를 바꾸는 중(D36 끄는 중·전환 중)에는 거품 탭을 받지 않는다(D37)
+    const switching = up >= 2 || this.steer;
+    if ((r.dataset.switching === '1') !== switching) {
+      if (switching) r.dataset.switching = '1';
+      else delete r.dataset.switching;
+    }
   }
 
   /**
-   * 구 원판(은은한 테두리·음영). 크기·자리·축소가 바뀔 때만 쓴다(집중 전환 0.4초 동안만).
-   * transform 대신 left·top·크기로 둔다: 큰 반투명 원이 합성 레이어가 되면 헤드리스·저사양에서 프레임이 멈췄다
+   * 구 원판(은은한 테두리·음영). 크기는 하늘 상태 반지름 R0로 두고 자리·축소는 transform(2D)으로 쓴다(D37: 움직임은 transform·opacity만).
+   * 바뀔 때만 쓴다(펼침·닫기 0.34초 동안만). will-change·3D로 레이어를 올리지 않는다: 큰 반투명 원이 합성 레이어가 되면 헤드리스·저사양에서 프레임이 멈췄다
    */
-  private drawSphere(vp: GlobeViewport, dim: number) {
+  private drawSphere(vp: GlobeViewport, r0: number, dim: number) {
     const el = this.sphere;
     if (!el) return;
-    const key = `${vp.cx.toFixed(1)}|${vp.cy.toFixed(1)}|${vp.r.toFixed(1)}|${dim.toFixed(2)}`;
+    const key = `${vp.cx.toFixed(1)}|${vp.cy.toFixed(1)}|${vp.r.toFixed(1)}|${r0.toFixed(1)}|${dim.toFixed(2)}`;
     if (key === this.sphereKey) return;
     this.sphereKey = key;
     const s = el.style;
-    s.left = `${(vp.cx - vp.r).toFixed(1)}px`;
-    s.top = `${(vp.cy - vp.r).toFixed(1)}px`;
-    s.width = s.height = `${(vp.r * 2).toFixed(1)}px`;
+    const size = `${(r0 * 2).toFixed(1)}px`;
+    if (s.width !== size) s.width = s.height = size;
+    const k = r0 > 0 ? vp.r / r0 : 1;
+    s.transform = `translate(${(vp.cx - vp.r).toFixed(1)}px, ${(vp.cy - vp.r).toFixed(1)}px) scale(${k.toFixed(4)})`;
     s.opacity = dim.toFixed(2);
   }
 
@@ -691,7 +660,7 @@ export class GlobeEngine {
   private bind(): () => void {
     const el = this.root;
     let pointer: { id: number; x: number } | null = null;
-    let gesture: 'none' | 'pending' | 'drag' | 'lift' = 'none';
+    let gesture: 'none' | 'pending' | 'drag' | 'lift' | 'held' = 'none';
     let start = { x: 0, y: 0, t: 0 };
     let startTarget: Element | null = null;
     /** 끄는 동안의 (시각, φ) 표본(손 뗄 때 속도용) */
@@ -733,9 +702,15 @@ export class GlobeEngine {
       this.touch();
       // 들어 올린 카드를 끄는 중에는 지구본이 돌지 않는다
       if (gesture === 'lift') return this.opts.onDrag?.(e.clientX, e.clientY);
+      if (gesture === 'held') return;
       if (gesture === 'pending') {
         if (Math.hypot(e.clientX - start.x, e.clientY - start.y) <= MOTION.tapSlop) return;
         clearLift();
+        // 거품에서 시작해 움직이면 아무것도 하지 않는다(탭도 길게 누르기도 아님)
+        if (startTarget && this.opts.holdOnly?.(startTarget)) {
+          gesture = 'held';
+          return;
+        }
         gesture = 'drag';
         this.startSteer();
         this.mode = 'drag';

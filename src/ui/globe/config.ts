@@ -43,8 +43,8 @@ export const MOTION = {
   boardAutorotate: 2,
   /** 만지거나 패널을 닫은 뒤 이만큼 가만히 있으면 자전이 다시 시작한다(ms) */
   autorotateResumeMs: 4000,
-  /** 펼친 카드가 닿는 화면 위 여백(px). 아래는 입력 바 위 */
-  topPad: 10,
+  /** 펼침·닫기 전환 시간(ms): 구가 아래로 내려가며 작아지고 이름이 제목 자리로, 거품이 아치로(D37 ④ ≤ 400ms) */
+  splitMs: 300,
   /** 아래 여백(px): + 버튼 8 + 52 + 틈 10. 여기에 기기의 safe-area-inset-bottom을 더한다 */
   bottomPad: 70,
   /** 백그라운드에 이만큼 있다 돌아오면 다시 쓰기 모드(ms) */

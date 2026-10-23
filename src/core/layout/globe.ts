@@ -27,26 +27,13 @@ export const GLOBE = {
   labelEdge: 0.8,
   /** 이름표끼리 이만큼(px) 떨어져야 둘 다 글자. 겹치면 뒤쪽(z 작은) 것을 점으로 */
   labelGap: 2,
-  /** 펼친 카드 둘레 여유(px): 뒤 지구본 이름표가 이 안에 들면 글자를 숨긴다 */
+  /** 펼친 거품 둘레 여유(px): 뒤 지구본 이름표가 이 안에 들면 글자를 숨긴다 */
   cardGap: 4,
-  /** 집중 상태(D19·D31): 뒤 지구본 반지름 배율과 투명도 배수(D28 0.55) */
-  focusZoom: 0.72,
+  /** 집중 상태(D19·D31): 뒤 지구본 투명도 배수(D28 0.55). 크기·자리는 SPLIT(D37) */
   focusDim: 0.55,
   /** 펼침: 화면 중심에서 이 각도 안이면 다 펼침(1), 이 각도 밖이면 이름표+점(0). 사이는 부드럽게 */
   expandFull: 8,
   expandNone: 35,
-  /** 펼친 카드 칸(카드 한 장 + 틈, px)과 가운데 이름표 자리. 정면 카드 기본 크기 ringScale(촘촘하게) */
-  cardW: 130,
-  cardH: 66,
-  gapX: 4,
-  gapY: 6,
-  labelW: 140,
-  labelH: 40,
-  ringScale: 0.88,
-  /** 펼친 주제에 한 번에 놓는 카드 칸 상한(넘치면 최근 메모 + "+N", D18) */
-  maxOpenCards: 12,
-  /** 펼치기 전 카드가 모여 있는 자리: 기존 무리 배치를 이만큼 줄여 쓴다(펼칠 때 여기서 터져 나온다) */
-  dotSpread: 0.32,
 } as const;
 
 const RAD = Math.PI / 180;
@@ -283,40 +270,6 @@ export function snapYaw(phi: number, lambdas: number[]): number {
   return best;
 }
 
-export interface RingBox { left: number; right: number; top: number; bottom: number }
-
-/** 카드 크기 k에서 이름표 둘레 칸들(안쪽 고리부터, 같은 고리는 12시에서 시계방향 순) */
-function ringCells(box: RingBox, k: number): { x: number; y: number; ring: number }[] {
-  const w = (GLOBE.cardW + GLOBE.gapX) * k, h = (GLOBE.cardH + GLOBE.gapY) * k;
-  const cw = GLOBE.cardW * k, ch = GLOBE.cardH * k;
-  const cells: { x: number; y: number; ring: number; a: number }[] = [];
-  const r0 = Math.ceil((box.top + ch / 2) / h), r1 = Math.floor((box.bottom - ch / 2) / h);
-  for (let r = r0; r <= r1; r++) {
-    const y = r * h;
-    const off = (Math.abs(r) % 2) * 0.5;
-    const j0 = Math.ceil((box.left + cw / 2) / w - off), j1 = Math.floor((box.right - cw / 2) / w - off);
-    for (let j = j0; j <= j1; j++) {
-      const x = (j + off) * w;
-      // 이름표 자리는 비운다
-      if (Math.abs(x) < (GLOBE.labelW + cw) / 2 && Math.abs(y) < (GLOBE.labelH + ch) / 2) continue;
-      const ring = Math.max(1, Math.ceil(Math.max(Math.abs(x) / w, Math.abs(y) / h) - 1e-6));
-      // 12시 = 0, 시계방향으로 증가(화면 y는 아래가 +)
-      const a = (Math.atan2(x, -y) + 2 * Math.PI) % (2 * Math.PI);
-      cells.push({ x: Math.round(x), y: Math.round(y), ring, a });
-    }
-  }
-  cells.sort((p, q) => p.ring - q.ring || p.a - q.a);
-  return cells.map(({ x, y, ring }) => ({ x, y, ring }));
-}
-
-/**
- * 펼친 주제에 한 번에 놓는 칸 수: 보통 카드 크기(ringScale)로 화면에 들어가는 칸 수와 maxOpenCards 중 작은 값.
- * 고정 상한을 두는 건 고리를 촘촘하게(둘레 하늘이 보이게) 유지하려는 것 — 큰 화면에서도 고리가 끝없이 커지지 않는다.
- */
-export function ringCapacity(box: RingBox): number {
-  return Math.max(1, Math.min(GLOBE.maxOpenCards, ringCells(box, GLOBE.ringScale).length));
-}
-
 /**
  * 펼친 주제에 보일 메모(D18): 다 들어가면 전부, 넘치면 최근 K개(K = 칸 수 − 1, 남은 한 칸은 "+N")만.
  * 보이는 것끼리는 오래된 것부터(D16 순서). hidden = 숨긴 수.
@@ -329,14 +282,247 @@ export function pickShown<T extends { id: string; createdAt: number }>(items: T[
 }
 
 /**
- * 펼친 모양: 가운데 이름표 둘레 칸에 카드 n장을 놓는다. 칸은 엇갈린 격자(서로·이름표와 안 겹침)이고,
- * 안쪽 고리부터, 같은 고리 안에서는 12시 방향에서 시계방향 순. 카드를 생성 시각 순(오래된 것 먼저)으로 주면
- * 오래된 메모부터 이름표를 시계방향으로 둘러싸고, 고리가 차면 바깥 고리로 넘어간다.
- * 보통은 n ≤ ringCapacity라 카드 크기는 ringScale 그대로. 화면이 아주 작을 때만 k를 줄여 담는다.
+ * 펼친 상태 = 위아래 나누기(D37). 구는 아래(+ 버튼 위)로 내려가 작아지고, 펼친 주제 이름은 위쪽 제목 자리,
+ * 메모는 구 위쪽을 감싸는 타원 호(아치)에 둥근 거품으로 놓인다. 폰에서 느낌을 보며 손으로 조절한다.
  */
-export function ringLayout(n: number, box: RingBox): { k: number; pos: { x: number; y: number; ring: number }[] } {
-  for (let k: number = GLOBE.ringScale; ; k *= 0.94) {
-    const cells = ringCells(box, k);
-    if (cells.length >= n || k < 0.2) return { k: Math.round(k * 1000) / 1000, pos: cells.slice(0, n) };
+export const SPLIT = {
+  /** 펼친 상태 구 반지름(px). 화면이 좁으면 하늘 상태 반지름을 넘지 않는다 */
+  globeR: 140,
+  /** 구 아래 끝과 + 버튼 자리 사이 틈(px) */
+  globeGap: 8,
+  /** 제목(펼친 주제 이름) 중심 = 위 safe-area + titleTop */
+  titleTop: 30,
+  /** 거품은 제목 중심에서 이만큼 아래부터(제목 글자와 안 겹침) */
+  titleClear: 22,
+  /** 아치 각도 범위(±, 위 방향 0°에서) */
+  arcDeg: 62,
+  /** 거품 지름(px) 범위와 거품 사이 간격 */
+  dMax: 108,
+  dMin: 76,
+  gap: 8,
+  /** 첫 줄 아치 세로 반지름 = 구 r + 거품 반지름 + rowLift */
+  rowLift: 24,
+  /** 아치 가로 반지름 ≤ 화면 폭/2 − 거품 반지름 − sideMargin */
+  sideMargin: 12,
+  /** 거품과 구 사이 최소 틈(px): 호 끝 거품이 구에 닿으면 그 줄 아치를 세로로 늘린다 */
+  globeClear: 8,
+} as const;
+
+/** 펼친 상태 화면 배치: 아래 구, 위 제목, 거품이 놓일 수 있는 범위 */
+export interface SplitGeom {
+  w: number;
+  globe: GlobeViewport;
+  title: { x: number; y: number };
+  /** 거품 위 끝이 이 y보다 아래 */
+  top: number;
+}
+
+/**
+ * 화면 크기 → 펼친 상태 배치. reserve = 아래 + 버튼 자리(bottomPad + 아래 safe-area), insetTop = 위 safe-area.
+ * 구 중심은 가로 가운데, 구 아래 끝이 + 버튼 자리 위 globeGap. 크기를 못 쟀으면(0) 반지름 0.
+ */
+export function splitGeom(width: number, height: number, reserve = 0, insetTop = 0): SplitGeom {
+  const avail = Math.max(0, height - reserve);
+  const r = Math.max(0, Math.min(SPLIT.globeR, width / 2 - GLOBE.sideMargin, avail / 2 - GLOBE.sideMargin));
+  const cy = width && height ? avail - r - SPLIT.globeGap : 0;
+  const ty = insetTop + SPLIT.titleTop;
+  return { w: width, globe: { cx: width / 2, cy, r }, title: { x: width / 2, y: ty }, top: ty + SPLIT.titleClear };
+}
+
+export interface ArchSpot { x: number; y: number; row: number }
+
+/**
+ * 타원 호 위 거품 자리의 반각들: θ=0(위) 둘레로 좌우 대칭, 이웃 중심 거리(현) = d + gap, ±arcDeg 안. 홀수 줄이면 0부터,
+ * 짝수 줄이면 가운데 두 개(±t0)부터. 최대 upTo개(반쪽 기준)
+ */
+function halfAngles(odd: boolean, d: number, rx: number, ry: number, upTo: number): number[] {
+  const s = d + SPLIT.gap;
+  const lim = SPLIT.arcDeg * RAD + 1e-9;
+  const at = (t: number) => [rx * Math.sin(t), -ry * Math.cos(t)] as const;
+  const half: number[] = [];
+  if (odd) half.push(0);
+  else {
+    // 가운데 두 개: 좌우 대칭이라 현 = 2·rx·sin t
+    if (s / (2 * rx) >= 1) return half;
+    const t0 = Math.asin(s / (2 * rx));
+    if (t0 > lim) return half;
+    half.push(t0);
   }
+  while (half.length < upTo) {
+    const t0 = half[half.length - 1]!, [x0, y0] = at(t0);
+    const dist = (t: number) => {
+      const [x, y] = at(t);
+      return Math.hypot(x - x0, y - y0);
+    };
+    let lo = t0, hi = t0 + Math.PI / 2;
+    if (dist(hi) < s) break;
+    for (let k = 0; k < 22; k++) {
+      const mid = (lo + hi) / 2;
+      if (dist(mid) < s) lo = mid;
+      else hi = mid;
+    }
+    if (hi > lim) break;
+    half.push(hi);
+  }
+  return half;
+}
+
+/** 반각들 → 화면 자리(가운데부터 바깥으로: 0, −t1, +t1, …) */
+function spotsOf(half: number[], rx: number, ry: number, cx: number, cy: number): { x: number; y: number }[] {
+  const out: { x: number; y: number }[] = [];
+  for (const t of half) {
+    if (t === 0) out.push({ x: cx, y: cy - ry });
+    else out.push({ x: cx - rx * Math.sin(t), y: cy - ry * Math.cos(t) }, { x: cx + rx * Math.sin(t), y: cy - ry * Math.cos(t) });
+  }
+  return out;
+}
+
+const byX = (a: { x: number }, b: { x: number }) => a.x - b.x;
+
+/**
+ * 한 줄 아치를 세로 반지름 base부터 ryMax까지 늘려 가며 훑는다(위 끝이 제목에 닿으면 거기까지).
+ * 각 아치에서 가운데부터 바깥으로, 구·앞 줄 거품과 안 겹치는 데까지 센다. want개가 되는 첫 아치(want 없으면 가장 많이 담는 첫 아치)
+ */
+function scanRow(want: number, d: number, base: number, g: SplitGeom, prev: { x: number; y: number }[], ryMax = Infinity): { x: number; y: number }[] | null {
+  const br = d / 2;
+  const { cx, cy, r } = g.globe;
+  const rx = g.w / 2 - br - SPLIT.sideMargin;
+  if (rx <= 0) return null;
+  const ok = (p: { x: number; y: number }) =>
+    Math.hypot(p.x - cx, p.y - cy) >= r + br + SPLIT.globeClear - 1e-6 && prev.every((q) => Math.hypot(p.x - q.x, p.y - q.y) >= d + SPLIT.gap - 1e-6);
+  const odds = Number.isFinite(want) ? [want % 2 === 1] : [true, false];
+  const upTo = Number.isFinite(want) ? Math.ceil(want / 2) : 40;
+  let best: { x: number; y: number }[] | null = null;
+  for (let ry = base; ry <= ryMax + 1e-6 && cy - ry - br >= g.top; ry += 3) {
+    for (const odd of odds) {
+      const half = halfAngles(odd, d, rx, ry, upTo);
+      // 가운데부터 바깥으로 이어서 맞는 데까지(좁은 아치에서는 좌우 짝끼리도 가까울 수 있어 같은 줄 거품끼리도 본다)
+      const pos: { x: number; y: number }[] = [];
+      for (const t of half) {
+        const add = spotsOf([t], rx, ry, cx, cy);
+        if (!add.every((p) => ok(p) && pos.every((q) => Math.hypot(p.x - q.x, p.y - q.y) >= d + SPLIT.gap - 1e-6)) || (add.length === 2 && add[1]!.x - add[0]!.x < d + SPLIT.gap - 1e-6)) break;
+        pos.push(...add);
+      }
+      if (Number.isFinite(want)) {
+        if (pos.length === want) return pos.sort(byX);
+      } else if (!best || pos.length > best.length) best = pos;
+    }
+  }
+  return best ? best.sort(byX) : null;
+}
+
+/** m개가 다 들어가는 한 줄 아치(없으면 null) */
+const fitRow = (m: number, d: number, base: number, g: SplitGeom, prev: { x: number; y: number }[], ryMax?: number) => (m <= 0 ? [] : scanRow(m, d, base, g, prev, ryMax));
+
+/** 지름 d에서 한 줄에 놓을 수 있는 최대 개수와 그 자리 */
+const maxRow = (d: number, base: number, g: SplitGeom, prev: { x: number; y: number }[], ryMax?: number) => scanRow(Infinity, d, base, g, prev, ryMax) ?? [];
+
+/** 첫 줄 아치 세로 반지름 기준값(D37: 구 r + 거품 반지름 + 24) */
+const rowBase = (d: number, g: SplitGeom) => g.globe.r + d / 2 + SPLIT.rowLift;
+
+/**
+ * 첫 줄 아치의 세로 반지름 상한: 기준값부터 늘려 가며 ±arcDeg 끝까지 구에 막히지 않고 차는 첫 값.
+ * 좁은 화면(가로 반지름 < 세로 반지름)에서는 기준값의 호 끝이 구에 닿아 조금 늘려야 한다. 이보다 더 늘리면 아치가 위로 솟는다
+ */
+function ryFull(d: number, g: SplitGeom): number {
+  const br = d / 2;
+  const { cx, cy, r } = g.globe;
+  const rx = g.w / 2 - br - SPLIT.sideMargin;
+  let ry = rowBase(d, g);
+  for (; cy - ry - br >= g.top; ry += 3) {
+    const half = halfAngles(true, d, rx, ry, 40);
+    if (spotsOf(half, rx, ry, cx, cy).every((p) => Math.hypot(p.x - cx, p.y - cy) >= r + br + SPLIT.globeClear - 1e-6)) return ry;
+  }
+  return ry - 3;
+}
+
+export interface ArchLayout {
+  /** 거품 지름(px) */
+  d: number;
+  /** 거품 중심(화면 px). 첫 줄 왼쪽 → 오른쪽, 그다음 둘째 줄 */
+  pos: ArchSpot[];
+}
+
+/**
+ * 두 줄 아치(지름 d). 첫 줄은 구를 감싸는 아치(세로 반지름 ryFull), 둘째 줄은 그 바로 바깥 동심 타원 호
+ * (세로 반지름 = 첫 줄 + d + gap에서 첫 줄 거품과 안 겹치게 최대 d/2 더, 가로 반지름은 같은 화면폭 제한) — 그 이상 위로 솟게 늘리지 않는다.
+ * 둘째 줄도 가운데부터 좌우로 이어 놓고 2개 이상, 그리고 3개 이상이거나 첫 줄보다 적을 때만 쓴다. n이 Infinity면 가장 많이 담는 배치
+ */
+function twoRows(n: number, d: number, g: SplitGeom): ArchSpot[] | null {
+  let best: ArchSpot[] | null = null;
+  const ry1 = ryFull(d, g), ry2 = ry1 + d + SPLIT.gap;
+  // 첫 줄은 꽉 찬 아치(가장 많이 담는 개수, 홀짝 맞추려 하나 적은 것까지): 첫 줄이 덜 차 가운데만 남는 일이 없게
+  const full = maxRow(d, ry1, g, [], ry1).length;
+  for (let m1 = full; m1 >= Math.max(1, full - 1); m1--) {
+    const first = fitRow(m1, d, ry1, g, [], ry1);
+    if (!first || first.length >= n) continue;
+    const second = Number.isFinite(n) ? fitRow(n - first.length, d, ry2, g, first, ry2 + d / 2) : maxRow(d, ry2, g, first, ry2 + d / 2);
+    // 둘째 줄은 3개 이상이거나 첫 줄보다 적게(2+2처럼 네모로 쌓이지 않게), 그리고 2개 이상(가운데 홀로 뜬 거품 없게)
+    if (!second || second.length < 2 || (second.length < 3 && second.length >= first.length)) continue;
+    const pos = [...first.map((p) => ({ ...p, row: 0 })), ...second.map((p) => ({ ...p, row: 1 }))];
+    if (Number.isFinite(n)) return pos;
+    if (!best || pos.length > best.length) best = pos;
+  }
+  return best;
+}
+
+const archCache = new Map<string, { cap: number; d: number; layouts: Map<number, ArchLayout> }>();
+const geomKey = (g: SplitGeom) => [g.w, g.globe.cx, g.globe.cy, g.globe.r, g.top].map((v) => v.toFixed(1)).join('|');
+
+function archTable(g: SplitGeom) {
+  const key = geomKey(g);
+  let t = archCache.get(key);
+  if (!t) {
+    if (archCache.size > 8) archCache.clear();
+    const most = twoRows(Infinity, SPLIT.dMin, g) ?? [];
+    const one = maxRow(SPLIT.dMin, rowBase(SPLIT.dMin, g), g, [], ryFull(SPLIT.dMin, g));
+    t = { cap: Math.max(1, most.length, one.length), d: SPLIT.dMin, layouts: new Map() };
+    archCache.set(key, t);
+  }
+  return t;
+}
+
+/** 한 줄 아치에 m개가 다 들어가는 가장 큰 지름(세로 반지름은 제목 아래까지 키울 수 있다) */
+function oneRowLayout(m: number, g: SplitGeom): ArchLayout | null {
+  for (let d: number = SPLIT.dMax; d >= SPLIT.dMin; d -= 2) {
+    const pos = fitRow(m, d, rowBase(d, g), g, []);
+    if (pos) return { d, pos: pos.map((p) => ({ ...p, row: 0 })) };
+  }
+  return null;
+}
+
+/** 두 줄 아치에 m개가 들어가는 가장 큰 지름(above보다 큰 것만). 4px씩 줄여 본다(2px씩은 계산이 두 배인데 눈에 띄는 차이가 없다) */
+function twoRowLayout(m: number, g: SplitGeom, above: number): ArchLayout | null {
+  for (let d: number = SPLIT.dMax; d > above && d >= SPLIT.dMin; d -= 4) {
+    const pos = twoRows(m, d, g);
+    if (pos) return { d, pos };
+  }
+  return null;
+}
+
+/**
+ * 거품 n개 배치(D37). 한 줄에 다 들어가는 가장 큰 지름(108 → 76)과 바깥 둘째 줄까지 쓰는 가장 큰 지름 중 더 큰 쪽(같으면 한 줄).
+ * 한 번 두 줄이 된 뒤로는 메모가 늘어도 두 줄(한 줄로 돌아가 아치가 세로로 길게 솟지 않게). 메모가 늘 때 지름은 커지지 않는다.
+ * archCapacity를 넘는 n은 받지 않는다(호출한 쪽이 최근 N개 + "+N"을 고른다). 같은 화면이면 1..capacity를 한 번에 정해 기억해 둔다
+ */
+export function archLayout(n: number, g: SplitGeom): ArchLayout {
+  if (n <= 0 || !g.w || !g.globe.r) return { d: SPLIT.dMax, pos: [] };
+  const t = archTable(g);
+  if (!t.layouts.size) {
+    let two = false;
+    for (let m = 1; m <= t.cap; m++) {
+      const one = two ? null : oneRowLayout(m, g);
+      const dbl = twoRowLayout(m, g, one ? one.d : SPLIT.dMin - 1);
+      if (dbl) two = true;
+      // 정확히 m개 배치를 못 찾으면(홀짝) 가장 많이 담는 배치에서 앞쪽 m개
+      t.layouts.set(m, dbl ?? one ?? oneRowLayout(m, g) ?? { d: SPLIT.dMin, pos: (twoRows(Infinity, SPLIT.dMin, g) ?? []).slice(0, m) });
+    }
+  }
+  return t.layouts.get(Math.min(n, t.cap))!;
+}
+
+/** 펼친 주제에 한 번에 놓는 거품 수(지름 76, 두 줄까지). 넘치면 최근 N개 + "+N"(D18) */
+export function archCapacity(g: SplitGeom): number {
+  if (!g.w || !g.globe.r) return 1;
+  return archTable(g).cap;
 }

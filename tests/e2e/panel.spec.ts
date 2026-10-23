@@ -420,7 +420,7 @@ test('포커스: 글을 고쳐 저장하면 새로고침 뒤에도 남고, 빈 �
     const p = (await db.memos.toArray()).find((m: any) => m.input === 'photo' && m.photo);
     await db.memos.update(id, { input: 'photo', photo: p.photo, text: '사진 설명' });
   }, second);
-  await expect(page.locator(`.g-card[data-memo-id="${second}"] .face.photo`)).toHaveCount(1);
+  await expect(page.locator(`.g-card[data-memo-id="${second}"] .face[data-kind="photo"]`)).toHaveCount(1);
   await openFocus(page, second);
   await page.getByTestId('edit-text').click();
   await edit.fill('');

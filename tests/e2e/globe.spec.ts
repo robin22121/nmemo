@@ -132,7 +132,7 @@ test('지구본: 주제 없이 열린 쓰기 칸은 마지막으로 읽던(정�
   await expect.poll(() => composer.evaluate((el) => (el as HTMLElement).style.getPropertyValue('--c'))).toBe(color);
 });
 
-test('지구본: 창 resize 이벤트 없이 보드 크기가 바뀌어도(iOS 웹뷰) 정가운데 주제가 화면 가운데에 온다', async ({ page }) => {
+test('지구본: 창 resize 이벤트 없이 보드 크기가 바뀌어도(iOS 웹뷰) 펼친 주제 이름이 새 크기의 제목 자리(가로 가운데)에 온다', async ({ page }) => {
   // 휴대폰 웹뷰가 임시 크기로 먼저 그린 뒤 실제 크기를 받는데 resize 이벤트가 오지 않는 경우를 흉내 낸다
   await page.addInitScript(() => {
     const add = window.addEventListener;
@@ -152,7 +152,8 @@ test('지구본: 창 resize 이벤트 없이 보드 크기가 바뀌어도(iOS �
       const r = document.querySelector(`.g-cluster[data-topic-id="${front}"] .g-tag`)!.getBoundingClientRect();
       return [Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2)];
     });
-  await expect.poll(center).toEqual([188, 406]);
+  // D37: 펼친 주제 이름은 위쪽 제목 자리(가로 가운데, 위 safe-area 0 + 30)
+  await expect.poll(center).toEqual([188, 30]);
 });
 
 type MemoRow = { id: string; topicId: string; topicLocked?: boolean };

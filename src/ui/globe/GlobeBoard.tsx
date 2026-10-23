@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { connectedTopics, visibleMoves, type TopicConnection } from '../../core/connections';
-import { GLOBE, pickShown, placeTopics, ringCapacity, ringLayout, type RingBox } from '../../core/layout/globe';
+import { archCapacity, archLayout, pickShown, placeTopics, splitGeom, type SplitGeom } from '../../core/layout/globe';
 import { setDone } from '../../db/repo';
 import { getDb } from '../../db/schema';
 import type { Memo, Topic } from '../../db/schema';
@@ -10,14 +10,15 @@ import { motionBus } from '../../motion/bus';
 import { arcKeyframes, FLIGHT_SECONDS } from '../../motion/presets';
 import { getQueue } from '../../organize/runtime';
 import { usePending } from '../hooks';
+import { useObjectUrl } from '../hooks';
 import { MovedIcon } from '../icons';
-import { CardFace, cardText, cardTilt } from '../MemoCard';
+import { cardText } from '../MemoCard';
 import { useBoardData } from '../useBoardData';
 import { GlobeComposer } from './Composer';
 import { GlobeMenu } from './GlobeMenu';
 import { LABEL_STYLE, MOTION, WRITE_START } from './config';
 import { TopicListSheet } from './TopicListSheet';
-import { boxOf, GlobeEngine, measureBoard, type GlobeItem } from './engine';
+import { GlobeEngine, measureBoard, type GlobeItem } from './engine';
 import '../board.css';
 import './globe.css';
 
@@ -25,25 +26,80 @@ interface Cluster {
   topic: Topic;
   lambda: number;
   beta: number;
-  /** 펼쳤을 때 보이는 카드: 펼친 자리(r)와 펼치기 전 모여 있는 자리(d), 이름표 중심 기준 */
-  cards: { memo: Memo; rx: number; ry: number; dx: number; dy: number }[];
-  /** 숨긴 수와 "+N" 칩 자리(넘칠 때만) */
+  /** 펼쳤을 때 보이는 거품: 아치 위 자리(제목 = 펼친 이름 중심 기준)와 줄(0 첫 줄 · 1 둘째 줄) */
+  cards: { memo: Memo; rx: number; ry: number; row: number }[];
+  /** 숨긴 수와 "+N" 거품 자리(넘칠 때만) */
   more: { n: number; rx: number; ry: number } | null;
-  k: number;
+  /** 거품 지름(px) */
+  d: number;
   count: number;
 }
 
-/** 0 측정이면 null: 호출한 쪽이 이전 값을 지킨다 */
-function ringBox(el?: HTMLElement | null, inset = 0, insetTop = 0): RingBox | null {
+/** 펼친 상태 배치(D37). 0 측정이면 null: 호출한 쪽이 이전 값을 지킨다 */
+function splitOf(el?: HTMLElement | null, inset = 0, insetTop = 0): SplitGeom | null {
   const { w, h } = el ? measureBoard(el) : { w: window.innerWidth, h: window.innerHeight };
-  return w && h ? boxOf(w, h, inset, insetTop) : null;
+  return w && h ? splitGeom(w, h, MOTION.bottomPad + inset, insetTop) : null;
 }
 
-/** 정돈된 메모: 쓰기 칸 자리(대기 칩)에서 제 주제의 고리 칸으로 포물선 비행 */
-interface Flight { id: string; memo: Memo; color?: string; from: { x: number; y: number }; to: { x: number; y: number }; scale: number }
+/** 정돈된 메모: 쓰기 칸 자리(대기 칩)에서 제 주제의 아치 자리로 포물선 비행 */
+interface Flight { id: string; memo: Memo; color?: string; from: { x: number; y: number }; to: { x: number; y: number }; scale: number; d: number }
 
-/** 길게 눌러 들어 올린 카드(D23). (x, y)는 손가락, (ox, oy)는 손가락 − 카드 중심, home은 원래 카드 중심 */
-interface Lift { id: string; memo: Memo; from: string; color?: string; x: number; y: number; ox: number; oy: number; home: { x: number; y: number }; scale: number; over: string | null; back?: boolean }
+/** 길게 눌러 들어 올린 거품(D23). (x, y)는 손가락, (ox, oy)는 손가락 − 거품 중심, home은 원래 거품 중심 */
+interface Lift { id: string; memo: Memo; from: string; color?: string; x: number; y: number; ox: number; oy: number; home: { x: number; y: number }; scale: number; d: number; over: string | null; armed: boolean; back?: boolean }
+
+/** 거품 글 줄 수(D37): 첫 줄 아치 3줄, 둘째 줄 2줄 */
+const ROW_LINES = [3, 2];
+
+/**
+ * 메모 거품(D37): 둥근 원 안에 글(내접 사각형 안, 12px, 줄 수 넘치면 말줄임). 할 일은 글 앞 ○(누르면 완료),
+ * 사진은 거품 안 둥근 사진 + 한 줄. 겉은 face(메모 포커스가 이 원에서 커져 나온다)
+ */
+function Bubble({ memo, d, lines, onToggleDone }: { memo: Memo; d: number; lines: number; onToggleDone?: (id: string, done: boolean) => void }) {
+  const photo = memo.input === 'photo';
+  const url = useObjectUrl(photo ? memo.photo : undefined);
+  const text = cardText(memo);
+  const todo = memo.kind === 'todo' && !photo;
+  return (
+    <div
+      className={`face bubble${memo.done && todo ? ' done' : ''}`}
+      data-kind={photo ? 'photo' : memo.kind}
+      style={{ width: d, height: d, ['--lines' as string]: photo ? 1 : lines, ['--in' as string]: `${Math.floor(d / Math.SQRT2)}px` }}
+    >
+      {photo && <span className="b-photo" style={url ? { backgroundImage: `url(${url})` } : undefined} />}
+      <span className="face-text">
+        {/* 한 덩어리로 감싼다: -webkit-box(말줄임)의 자식은 블록이 되어 ○가 따로 한 줄을 차지하므로.
+            ○는 글자처럼 이어지는 인라인 span(button은 인라인 블록이라 그 뒤에서 줄이 바뀐다), 뒤에 낱말 잇개(U+2060):
+            word-break keep-all에서 띄어쓰기 없는 긴 첫 낱말이 ○만 남기고 다음 줄로 넘어가지 않게 */}
+        <span>
+          {todo && (
+            <span
+              role="button"
+              tabIndex={0}
+              className="b-todo"
+              aria-label={memo.done ? '완료 취소' : '완료'}
+              aria-pressed={!!memo.done}
+              data-todo-check
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleDone?.(memo.id, !memo.done);
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                e.stopPropagation();
+                onToggleDone?.(memo.id, !memo.done);
+              }}
+            >
+              {memo.done ? '✓' : '○'}
+            </span>
+          )}
+          {todo && '\u2060'}
+          {text}
+        </span>
+      </span>
+    </div>
+  );
+}
 
 /** 마지막으로 읽던 주제(= 마지막에 멈춘 정면 주제). 주제 없이 열린 쓰기 칸의 색. DB(데모)마다 따로 */
 const lastTopicKey = () => `kk.lastTopic.${getDb().name}`;
@@ -102,8 +158,8 @@ function FlightCard({ f, onLand }: { f: Flight; onLand: (f: Flight) => void }) {
       }}
       onAnimationComplete={() => onLand(f)}
     >
-      <div className="card" style={{ transform: `translate(-50%, -50%) rotate(${cardTilt(f.memo)}deg)` }}>
-        <CardFace memo={f.memo} />
+      <div className="card" style={{ transform: 'translate(-50%, -50%)' }}>
+        <Bubble memo={f.memo} d={f.d} lines={ROW_LINES[0]!} />
       </div>
     </motion.div>
   );
@@ -111,7 +167,7 @@ function FlightCard({ f, onLand }: { f: Flight; onLand: (f: Flight) => void }) {
 
 /**
  * 지구본 보드(앱의 보드 화면, D35). 화면 안에 통째로 보이는 작은 구 위에 주제가 점·이름표로 놓이고 구는 세로축으로만 돈다.
- * 주제를 누르면 그 주제가 구에서 떠올라 화면 가운데에서 카드를 펼치고, 구는 뒤에서 작고 연하게 계속 돈다.
+ * 주제를 누르면 위아래로 나뉜다(D37): 구는 아래로 내려가 작아지고, 그 주제 이름은 위쪽 제목 자리, 메모는 구 위 아치에 둥근 거품.
  * 회전은 GlobeEngine이 DOM에 직접 쓰고, React는 데이터·화면 크기가 바뀔 때만 다시 그린다.
  */
 export function GlobeBoard({
@@ -132,9 +188,9 @@ export function GlobeBoard({
   const rootRef = useRef<HTMLDivElement>(null);
   const insetRef = useRef<HTMLDivElement>(null);
   const engine = useRef<GlobeEngine | null>(null);
-  const els = useRef(new Map<string, { el: HTMLElement | null; tag: HTMLElement | null }>());
+  const els = useRef(new Map<string, { el: HTMLElement | null; tag: HTMLElement | null; pt: HTMLElement | null }>());
   const cardEls = useRef(new Map<string, HTMLElement | null>());
-  const [box, setBox] = useState<RingBox>(() => ringBox() ?? boxOf(375, 812));
+  const [geom, setGeom] = useState<SplitGeom>(() => splitOf() ?? splitGeom(375, 812, MOTION.bottomPad));
   const [writing, setWriting] = useState(WRITE_START);
   const [draft, setDraft] = useState('');
   // 쓰기 칸을 연 곳: 주제 옆 +면 그 주제, 그리고 열고 닫힐 때의 기준점(누른 버튼 중심)
@@ -173,13 +229,13 @@ export function GlobeBoard({
       cancelAnimationFrame(raf);
       // safe-area inset: 숨은 상자의 padding-bottom·top(env)을 읽는다(홈 표시줄·노치가 있는 기기만 0이 아님)
       const cs = getComputedStyle(insetRef.current!);
-      const n = ringBox(rootRef.current, parseFloat(cs.paddingBottom) || 0, parseFloat(cs.paddingTop) || 0);
+      const n = splitOf(rootRef.current, parseFloat(cs.paddingBottom) || 0, parseFloat(cs.paddingTop) || 0);
       if (!n) {
         // 0 측정(iOS 홈 화면 앱 콜드 스타트): 이전 값을 지키고 몇 프레임 뒤 다시 잰다
         if (tries < 60) raf = requestAnimationFrame(() => on(tries + 1));
         return;
       }
-      setBox((cur) => (n.left === cur.left && n.right === cur.right && n.top === cur.top && n.bottom === cur.bottom ? cur : n));
+      setGeom((cur) => (n.w === cur.w && n.top === cur.top && n.globe.cy === cur.globe.cy && n.globe.r === cur.globe.r ? cur : n));
     };
     const onEvent = () => on();
     on();
@@ -197,7 +253,7 @@ export function GlobeBoard({
 
   const clusters = useMemo<Cluster[]>(() => {
     const byId = new Map(memos.map((m) => [m.id, m]));
-    const cap = ringCapacity(box);
+    const cap = archCapacity(geom);
     const place = placeTopics({
       topics: Object.keys(layout.clusters).map((id) => ({ id })),
       memos: Object.entries(layout.cards).map(([id, c]) => ({ id, topicId: c.topicId })),
@@ -207,31 +263,36 @@ export function GlobeBoard({
       const pl = place.topics[topic.id];
       const c = layout.clusters[topic.id];
       if (!pl || !c) return [];
-      // 펼치기 전 자리는 기존 무리 배치를 줄여 쓴다. 펼치면 최근 K개만 오래된 것부터 이름표 둘레 시계방향(12시 시작),
-      // 넘치는 만큼은 다음 칸의 "+N" 칩으로(D16·D18)
-      const local = Object.entries(layout.cards)
-        .filter(([id, p]) => p.topicId === topic.id && byId.has(id))
-        .map(([id, p]) => ({ id, createdAt: byId.get(id)!.createdAt, memo: byId.get(id)!, dx: (p.x - c.x) * GLOBE.dotSpread, dy: (p.y - c.y) * GLOBE.dotSpread }));
+      // 펼치면 최근 K개만 오래된 것부터 아치 왼쪽 → 오른쪽(첫 줄, 다음 둘째 줄), 넘치는 만큼은 마지막 자리의 "+N" 거품으로(D18·D37)
+      const local = Object.keys(layout.cards)
+        .filter((id) => layout.cards[id]!.topicId === topic.id && byId.has(id))
+        .map((id) => ({ id, createdAt: byId.get(id)!.createdAt, memo: byId.get(id)! }));
       const { shown, hidden } = pickShown(local, cap);
-      const ring = ringLayout(shown.length + (hidden ? 1 : 0), box);
-      const cards = shown.map((l, i) => ({ memo: l.memo, dx: l.dx, dy: l.dy, rx: ring.pos[i]!.x, ry: ring.pos[i]!.y }));
-      const mp = ring.pos[shown.length];
-      const more = hidden && mp ? { n: hidden, rx: mp.x, ry: mp.y } : null;
-      return [{ topic, lambda: pl.lambda, beta: pl.beta, cards, more, k: ring.k, count: local.length }];
+      const arch = archLayout(shown.length + (hidden ? 1 : 0), geom);
+      const at = (i: number) => {
+        const p = arch.pos[i]!;
+        return { rx: Math.round(p.x - geom.title.x), ry: Math.round(p.y - geom.title.y), row: p.row };
+      };
+      const cards = shown.flatMap((l, i) => (arch.pos[i] ? [{ memo: l.memo, ...at(i) }] : []));
+      const more = hidden && arch.pos[shown.length] ? { n: hidden, ...at(shown.length) } : null;
+      return [{ topic, lambda: pl.lambda, beta: pl.beta, cards, more, d: arch.d, count: local.length }];
     });
-  }, [topics, memos, links, layout, box]);
+  }, [topics, memos, links, layout, geom]);
 
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
     const e = new GlobeEngine(root, {
       shouldIgnore: (t) => !!t.closest('[data-todo-check], [data-no-pan]'),
+      // 펼친 거품(+N 포함) 위에서 시작한 끌기는 구를 돌리지 않는다(D37). 거품은 펼친 주제에만 보인다
+      holdOnly: (t) => !!t.closest('.g-card'),
       onTap: (t, x, y) => {
         const front = root.dataset.front;
         const focus = e.isFocus;
         const tid = t.closest('[data-topic-id]')?.getAttribute('data-topic-id');
         const card = t.closest('[data-memo-id]')?.getAttribute('data-memo-id');
-        // 집중 보기: 가운데 주제의 카드 → 메모 상세, "+N" → 그 주제 메모 전체 목록
+        // 집중 보기: 펼친 주제의 거품 → 메모 상세, "+N" → 그 주제 메모 전체 목록. 주제를 바꾸는 중(D36 끄는 중간)에는 거품 탭 무효(D37)
+        if (focus && (card || t.closest('[data-more]')) && tid === front && root.dataset.switching === '1') return;
         if (focus && card && tid === front) return select.current(card);
         if (focus && t.closest('[data-more]') && tid && tid === front) return setListTopic(tid);
         // 손가락에 가장 가까운 이름표(글자가 보이는 것만, 둘레 16px까지). 없으면 앞면 점(둘레 12px까지)
@@ -290,12 +351,12 @@ export function GlobeBoard({
       if (!r?.el) return [];
       const cards = c.cards.flatMap((k) => {
         const el = cardEls.current.get(k.memo.id);
-        return el ? [{ el, rx: k.rx, ry: k.ry, dx: k.dx, dy: k.dy }] : [];
+        return el ? [{ el, rx: k.rx, ry: k.ry }] : [];
       });
-      // "+N" 칩도 카드처럼 이름표 자리에서 펼쳐져 나온다
+      // "+N" 거품도 다른 거품처럼 이름 자리에서 퍼져 나온다
       const chip = cardEls.current.get(`more:${c.topic.id}`);
-      if (c.more && chip) cards.push({ el: chip, rx: c.more.rx, ry: c.more.ry, dx: 0, dy: 0 });
-      return [{ id: c.topic.id, lambda: c.lambda, beta: c.beta, el: r.el, tag: r.tag, cards, k: c.k, weight: c.count }];
+      if (c.more && chip) cards.push({ el: chip, rx: c.more.rx, ry: c.more.ry });
+      return [{ id: c.topic.id, lambda: c.lambda, beta: c.beta, el: r.el, tag: r.tag, pt: r.pt, cards, d: c.d, weight: c.count }];
     });
     engine.current?.setItems(items);
   }, [clusters]);
@@ -376,7 +437,8 @@ export function GlobeBoard({
       }
       const r = el.getBoundingClientRect();
       const sc = Number(/scale\(([\d.]+)\)/.exec(el.style.transform)?.[1] ?? 1);
-      fly.push({ id, memo, color: topics.find((t) => t.id === v.topicId)?.color, from: v.from ?? { x: window.innerWidth / 2, y: 90 }, to: { x: r.left + r.width / 2, y: r.top + r.height / 2 }, scale: sc });
+      const d = clusters.find((c) => c.topic.id === v.topicId)?.d ?? 76;
+      fly.push({ id, memo, color: topics.find((t) => t.id === v.topicId)?.color, from: v.from ?? { x: window.innerWidth / 2, y: 90 }, to: { x: r.left + r.width / 2, y: r.top + r.height / 2 }, scale: sc, d });
     }
     reveal(show);
     if (fly.length) setFlights((cur) => [...cur, ...fly]);
@@ -396,15 +458,13 @@ export function GlobeBoard({
     return () => window.clearTimeout(t);
   }, [moving, memos]);
 
-  /** 손가락 아래 주제 이름(오른쪽 위 목록). 이름이 짧아도 목록 폭 안이면 그 줄로 본다 */
+  /** 손가락 아래 주제 이름(위쪽 층의 이름 알약, 둘레 6px까지) */
   const overTopic = (x: number, y: number): string | null => {
     const list = moveListRef.current;
     if (!list) return null;
-    const lr = list.getBoundingClientRect();
-    if (x < lr.left - 16 || y < lr.top || y > lr.bottom) return null;
     for (const row of list.querySelectorAll<HTMLElement>('[data-move-topic]')) {
       const r = row.getBoundingClientRect();
-      if (y >= r.top - 3 && y <= r.bottom + 3) return row.dataset.moveTopic ?? null;
+      if (x >= r.left - 6 && x <= r.right + 6 && y >= r.top - 6 && y <= r.bottom + 6) return row.dataset.moveTopic ?? null;
     }
     return null;
   };
@@ -415,10 +475,10 @@ export function GlobeBoard({
     drop: () => {},
   });
   liftH.current = {
-    // 집중 보기의 가운데 주제 카드만 들어 올린다(탭과 같은 범위). 옮겨 갈 다른 주제가 있어야 한다
+    // 집중 보기의 펼친 주제 거품만 들어 올린다(탭과 같은 범위, 주제 바꾸는 중 제외). 옮겨 갈 다른 주제가 있어야 한다
     lift: (t, x, y) => {
       const root = rootRef.current;
-      if (!root || writing || !engine.current?.isFocus) return false;
+      if (!root || writing || !engine.current?.isFocus || root.dataset.switching === '1') return false;
       const el = t.closest<HTMLElement>('[data-memo-id]');
       const tid = t.closest('[data-topic-id]')?.getAttribute('data-topic-id');
       if (!el || !tid || tid !== root.dataset.front) return false;
@@ -427,33 +487,38 @@ export function GlobeBoard({
       const b = (el.querySelector('.card') ?? el).getBoundingClientRect();
       const home = { x: b.left + b.width / 2, y: b.top + b.height / 2 };
       const scale = Number(/scale\(([\d.]+)\)/.exec(el.style.transform)?.[1] ?? 1);
+      const d = clusters.find((c) => c.topic.id === tid)?.d ?? b.width;
       navigator.vibrate?.(12);
       select.current(null);
-      setLift({ id: memo.id, memo, from: memo.topicId, color: topics.find((tp) => tp.id === memo.topicId)?.color, x, y, ox: x - home.x, oy: y - home.y, home, scale, over: null });
+      setLift({ id: memo.id, memo, from: memo.topicId, color: topics.find((tp) => tp.id === memo.topicId)?.color, x, y, ox: x - home.x, oy: y - home.y, home, scale, d, over: null, armed: false });
       return true;
     },
     drag: (x, y) => {
-      // 주제가 많아 목록이 넘치면 위아래 끝에 대고 있을 때 목록이 흐른다
+      // 주제가 많아 층이 넘치면 아래 끝에 대고 있을 때 목록이 흐른다(위 끝은 처음으로)
       const list = moveListRef.current;
       if (list && list.scrollHeight > list.clientHeight) {
         const lr = list.getBoundingClientRect();
-        if (x >= lr.left - 16 && y < lr.top + 28) list.scrollTop -= 8;
-        else if (x >= lr.left - 16 && y > lr.bottom - 28) list.scrollTop += 8;
+        if (y < lr.top + 28) list.scrollTop -= 8;
+        else if (y > lr.bottom - 28 && y <= lr.bottom) list.scrollTop += 8;
       }
-      const over = overTopic(x, y);
-      setLift((cur) => (cur ? { ...cur, x, y, over } : cur));
+      // 들어 올린 자리에 이름이 덮여 있어도 손가락이 조금 움직이기 전에는 고르지 않는다(놓기만 해서 옮겨지지 않게)
+      setLift((cur) => {
+        if (!cur) return cur;
+        const armed = cur.armed || Math.hypot(x - (cur.home.x + cur.ox), y - (cur.home.y + cur.oy)) > 12;
+        return { ...cur, x, y, armed, over: armed ? overTopic(x, y) : null };
+      });
     },
     drop: (x, y) => {
       const l = liftRef.current;
       if (!l) return;
-      const over = overTopic(x, y);
+      const over = l.armed || Math.hypot(x - (l.home.x + l.ox), y - (l.home.y + l.oy)) > 12 ? overTopic(x, y) : null;
       if (over && over !== l.from) {
         setLift(null);
         setMoving({ id: l.id, topicId: over, from: { x: x - l.ox, y: y - l.oy } });
         onMoveToTopic(l.id, over);
         return;
       }
-      // 목록 밖: 취소, 카드는 제자리로 돌아간다
+      // 목록 밖: 취소, 거품은 제자리로 돌아간다
       if (reduced) return setLift(null);
       setLift({ ...l, x: l.home.x + l.ox, y: l.home.y + l.oy, over: null, back: true });
       window.setTimeout(() => setLift((cur) => (cur?.id === l.id && cur.back ? null : cur)), 400);
@@ -485,8 +550,8 @@ export function GlobeBoard({
     if (saved) engine.current?.setFocus(true);
   };
 
-  const reg = (id: string, key: 'el' | 'tag') => (node: HTMLElement | null) => {
-    const r = els.current.get(id) ?? { el: null, tag: null };
+  const reg = (id: string, key: 'el' | 'tag' | 'pt') => (node: HTMLElement | null) => {
+    const r = els.current.get(id) ?? { el: null, tag: null, pt: null };
     r[key] = node;
     els.current.set(id, r);
   };
@@ -507,27 +572,31 @@ export function GlobeBoard({
         <div className="g-sphere" aria-hidden />
         {clusters.map((c) => (
           <div key={c.topic.id} className="g-cluster" data-topic-id={c.topic.id} ref={reg(c.topic.id, 'el')} style={{ ['--c' as string]: c.topic.color }}>
-            <div className="g-glow" />
-            {c.cards.map(({ memo, dx, dy }) => (
+            {c.cards.map(({ memo, row }) => (
               <div
                 key={memo.id}
                 className={`g-card${incoming.has(memo.id) && !reduced ? ' g-incoming' : ''}${lift?.id === memo.id || moving?.id === memo.id ? ' g-lifted' : ''}`}
                 data-memo-id={memo.id}
+                data-row={row}
                 ref={regCard(memo.id)}
-                style={{ transform: `translate3d(${dx}px, ${dy}px, 0)` }}
+                style={{ transform: 'translate3d(0px, 0px, 0)' }}
               >
-                <div className="card" style={{ transform: `translate(-50%, -50%) rotate(${cardTilt(memo)}deg)` }}>
-                  <CardFace memo={memo} onToggleDone={(mid, d) => void setDone(mid, d)} />
+                <div className="card" style={{ transform: 'translate(-50%, -50%)' }}>
+                  <Bubble memo={memo} d={c.d} lines={ROW_LINES[row] ?? 2} onToggleDone={(mid, d) => void setDone(mid, d)} />
                   <CardMarks conn={conns.get(memo.id)} moved={moved.has(memo.id)} colorOf={colorOf} />
                 </div>
               </div>
             ))}
             {c.more && (
-              <div className="g-card g-more" data-more ref={regCard(`more:${c.topic.id}`)} style={{ transform: 'translate3d(0, 0, 0)' }}>
-                <span>+{c.more.n}</span>
+              <div className="g-card g-more" data-more ref={regCard(`more:${c.topic.id}`)} style={{ transform: 'translate3d(0px, 0px, 0)' }}>
+                <div className="card" style={{ transform: 'translate(-50%, -50%)' }}>
+                  <div className="face bubble" style={{ width: c.d, height: c.d }}>
+                    <span>+{c.more.n}</span>
+                  </div>
+                </div>
               </div>
             )}
-            <i className="g-pt" />
+            <i className="g-pt" ref={reg(c.topic.id, 'pt')} />
             <div className="g-tag" ref={reg(c.topic.id, 'tag')} data-topic-label>
               {c.topic.name}
             </div>
@@ -558,14 +627,21 @@ export function GlobeBoard({
             }}
             onTransitionEnd={() => setLift((cur) => (cur?.back ? null : cur))}
           >
-            <div className="card" style={{ transform: `translate(-50%, -50%) rotate(${cardTilt(lift.memo)}deg)` }}>
-              <CardFace memo={lift.memo} />
+            <div className="card" style={{ transform: 'translate(-50%, -50%)' }}>
+              <Bubble memo={lift.memo} d={lift.d} lines={ROW_LINES[0]!} />
             </div>
           </div>
         )}
       </div>
       {lift && !lift.back && (
-        <div className={`g-move${topics.length > 9 ? ' compact' : ''}`} ref={moveListRef} data-testid="move-topics" aria-label="옮길 주제">
+        // 위쪽 반투명 층(D37): 펼친 이름·거품 위를 덮고 다른 주제 이름을 늘어놓는다. 아래 끝 = 구 위 끝
+        <div
+          className={`g-move${topics.length > 12 ? ' compact' : ''}`}
+          ref={moveListRef}
+          data-testid="move-topics"
+          aria-label="옮길 주제"
+          style={{ height: Math.max(120, geom.globe.cy - geom.globe.r - 6) }}
+        >
           {topics
             .filter((t) => t.id !== lift.from)
             .map((t) => (

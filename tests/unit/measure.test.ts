@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { globeViewport, projectGlobe } from '../../src/core/layout/globe';
-import { boxOf, measureBoard } from '../../src/ui/globe/engine';
+import { splitGeom } from '../../src/core/layout/globe';
+import { MOTION } from '../../src/ui/globe/config';
+import { measureBoard } from '../../src/ui/globe/engine';
 
 // U1: 크기 0 측정이 NaN으로 번지지 않는다
 
@@ -35,15 +37,15 @@ describe('measureBoard: 0은 실패로 다룬다', () => {
   });
 });
 
-describe('boxOf: + 버튼 여백과 safe-area', () => {
-  it('아래 여백 = bottomPad(70) + inset, 위·좌우는 아래 inset과 무관, 위는 위 inset만큼', () => {
-    const a = boxOf(390, 844);
-    const b = boxOf(390, 844, 34);
-    expect(a.bottom).toBe(844 / 2 - 70);
-    expect(b.bottom).toBe(844 / 2 - 70 - 34);
+describe('splitGeom: + 버튼 여백과 safe-area(D37 펼친 상태)', () => {
+  it('구 아래 끝은 bottomPad(70) + 아래 inset 위, 제목·거품 시작선은 위 inset만큼 내려간다', () => {
+    const a = splitGeom(390, 844, MOTION.bottomPad);
+    const b = splitGeom(390, 844, MOTION.bottomPad + 34);
+    expect(a.globe.cy + a.globe.r).toBeLessThanOrEqual(844 - 70);
+    expect(b.globe.cy).toBe(a.globe.cy - 34);
+    expect(b.globe.r).toBe(a.globe.r);
     expect(b.top).toBe(a.top);
-    expect(b.left).toBe(a.left);
-    expect(b.right).toBe(a.right);
-    expect(boxOf(390, 844, 34, 47).top).toBe(a.top + 47);
+    expect(splitGeom(390, 844, MOTION.bottomPad + 34, 47).top).toBe(a.top + 47);
+    expect(splitGeom(390, 844, MOTION.bottomPad + 34, 47).title.y).toBe(a.title.y + 47);
   });
 });

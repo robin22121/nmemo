@@ -54,8 +54,9 @@ test('콜드 스타트 크기 0 측정: NaN 없이 그리고, 0이 풀리면 이
   expect(front).not.toBe('');
   const bb = (await board.boundingBox())!;
   const tb = (await page.locator(`.g-cluster[data-topic-id="${front}"] .g-tag`).boundingBox())!;
+  // 펼친 주제 이름은 위쪽 제목 자리(D37): 가로 가운데, 위 safe-area(0) + 30
   expect(Math.abs(tb.x + tb.width / 2 - (bb.x + bb.width / 2))).toBeLessThan(10);
-  expect(Math.abs(tb.y + tb.height / 2 - (bb.y + bb.height / 2))).toBeLessThan(10);
+  expect(Math.abs(tb.y + tb.height / 2 - (bb.y + 30))).toBeLessThan(10);
 });
 
 test('메뉴: 진단 줄에 빌드 id와 크기가 보인다', async ({ page }) => {

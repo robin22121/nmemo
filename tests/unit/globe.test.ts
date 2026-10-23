@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LayoutInput } from '../../src/core/layout/clusters';
-import { angularDist, bandPoints, depthOpacity, depthScale, expansion, GLOBE, globeViewport, labelBox, pickShown, placeTopics, planLabels, projectGlobe, ringCapacity, ringLayout, snapYaw, wrapDeg } from '../../src/core/layout/globe';
+import { angularDist, archCapacity, archLayout, bandPoints, depthOpacity, depthScale, expansion, GLOBE, globeViewport, labelBox, pickShown, placeTopics, planLabels, projectGlobe, snapYaw, SPLIT, splitGeom, wrapDeg } from '../../src/core/layout/globe';
 import { MOTION } from '../../src/ui/globe/config';
 import { frontOf } from '../../src/ui/globe/engine';
 
@@ -252,66 +252,124 @@ describe('expansion / snapYaw', () => {
   });
 });
 
-describe('ringLayout', () => {
-  const box = { left: -179, right: 179, top: -398, bottom: 270 }; // 375×812, 아래 입력 바
-  it('오래된 순(입력 순)으로 이름표 둘레를 12시부터 시계방향, 고리가 차면 바깥 고리로', () => {
-    for (const n of [7, 16, 34]) {
-      const { pos } = ringLayout(n, box);
-      const ang = (p: { x: number; y: number }) => (Math.atan2(p.x, -p.y) + 2 * Math.PI) % (2 * Math.PI);
-      for (let i = 1; i < pos.length; i++) {
-        const a = pos[i - 1]!, b = pos[i]!;
-        expect(b.ring).toBeGreaterThanOrEqual(a.ring);
-        if (b.ring === a.ring) expect(ang(b)).toBeGreaterThan(ang(a));
-      }
-      // 첫 카드는 첫 고리의 12시에 가장 가까운 칸(오른쪽 위)
-      expect(pos[0]!.y).toBeLessThan(0);
-      expect(pos[0]!.x).toBeGreaterThanOrEqual(0);
+describe('splitGeom / archLayout (D37 펼친 상태 = 위아래 나누기, 메모 거품 아치)', () => {
+  // 390×844, 세이프 위 47·아래 34
+  const g = splitGeom(W, H, MOTION.bottomPad + 34, 47);
+  const plusTop = H - 34 - 8 - 52;
+  const check = (n: number) => {
+    const a = archLayout(n, g);
+    const br = a.d / 2;
+    for (const p of a.pos) {
+      // 세이프 영역 안, 제목 아래, + 버튼 위
+      expect(p.x - br).toBeGreaterThanOrEqual(0);
+      expect(p.x + br).toBeLessThanOrEqual(W);
+      expect(p.y - br).toBeGreaterThanOrEqual(g.top - 1e-6);
+      expect(p.y + br).toBeLessThan(plusTop);
+      // 구와 겹치지 않음
+      expect(Math.hypot(p.x - g.globe.cx, p.y - g.globe.cy)).toBeGreaterThanOrEqual(g.globe.r + br);
+      // 아치는 구 위쪽 ±62° 안(타원 중심 = 구 중심)
+      expect(p.y).toBeLessThan(g.globe.cy);
+    }
+    for (let i = 0; i < a.pos.length; i++)
+      for (let j = i + 1; j < a.pos.length; j++) expect(Math.hypot(a.pos[i]!.x - a.pos[j]!.x, a.pos[i]!.y - a.pos[j]!.y)).toBeGreaterThanOrEqual(a.d + SPLIT.gap - 0.01);
+    return a;
+  };
+  it('구: 반지름 140, + 버튼 자리 위, 가로 가운데. 제목은 위 세이프 영역 아래', () => {
+    expect(g.globe.r).toBe(140);
+    expect(g.globe.cx).toBe(W / 2);
+    expect(g.globe.cy + g.globe.r).toBeLessThanOrEqual(H - MOTION.bottomPad - 34);
+    expect(g.title.y).toBeGreaterThan(47);
+    expect(g.top).toBeGreaterThan(g.title.y);
+  });
+  it('크기 0이면 반지름 0, 거품 없음(NaN 없음)', () => {
+    const z = splitGeom(0, 0, 70);
+    expect(z.globe.r).toBe(0);
+    expect(archLayout(5, z).pos).toEqual([]);
+    expect(archCapacity(z)).toBe(1);
+  });
+  it('메모 1~5개: 한 줄 아치(구를 감싸는 높은 아치), 지름 76~108, 겹침 0, 좌우 대칭', () => {
+    for (const n of [1, 2, 3, 4, 5]) {
+      const a = check(n);
+      expect(a.pos).toHaveLength(n);
+      expect(a.pos.every((p) => p.row === 0)).toBe(true);
+      expect(a.d).toBeGreaterThanOrEqual(SPLIT.dMin);
+      expect(a.d).toBeLessThanOrEqual(SPLIT.dMax);
+      const xs = a.pos.map((p) => p.x - g.globe.cx).sort((p, q) => p - q);
+      for (let i = 0; i < xs.length; i++) expect(xs[i]! + xs[xs.length - 1 - i]!).toBeCloseTo(0, 6);
+    }
+    expect(archLayout(1, g).d).toBe(SPLIT.dMax);
+  });
+  it('메모가 많으면 거품이 작아지고 두 줄(바깥 둘째 줄). 390×844는 지름 76·두 줄로 8개까지', () => {
+    const cap = archCapacity(g);
+    expect(cap).toBe(8);
+    expect(archLayout(6, g).pos.some((p) => p.row === 1)).toBe(true);
+    const a = check(cap);
+    expect(a.pos).toHaveLength(cap);
+    expect(a.d).toBe(SPLIT.dMin);
+    expect(new Set(a.pos.map((p) => p.row))).toEqual(new Set([0, 1]));
+    // 둘째 줄은 첫 줄 바깥(위)
+    const top0 = Math.min(...a.pos.filter((p) => p.row === 0).map((p) => p.y));
+    const top1 = Math.min(...a.pos.filter((p) => p.row === 1).map((p) => p.y));
+    expect(top1).toBeLessThan(top0);
+    // 둘째 줄은 첫 줄 바로 바깥 동심 호: 첫 줄 위 끝에서 d + gap(+ 겹침 피하는 여유 d/2 이하)만큼만 위, 위로 솟지 않는다
+    // 한 번 두 줄이 되면 계속 두 줄(아치가 다시 세로로 솟지 않게)
+    for (let n = 6; n <= cap; n++) {
+      const b = check(n);
+      const r0 = b.pos.filter((p) => p.row === 0), r1 = b.pos.filter((p) => p.row === 1);
+      // 각 줄의 타원 세로 반지름(중심 = 구 중심, 가로 반지름 = 화면폭 제한)
+      const rx = W / 2 - b.d / 2 - SPLIT.sideMargin;
+      const ryOf = (p: { x: number; y: number }) => (g.globe.cy - p.y) / Math.sqrt(1 - ((p.x - g.globe.cx) / rx) ** 2);
+      const ry0 = ryOf(r0[0]!), ry1 = ryOf(r1[0]!);
+      for (const p of r0) expect(ryOf(p)).toBeCloseTo(ry0, 3);
+      for (const p of r1) expect(ryOf(p)).toBeCloseTo(ry1, 3);
+      expect(ry1 - ry0).toBeGreaterThanOrEqual(b.d + SPLIT.gap - 1e-6);
+      expect(ry1 - ry0).toBeLessThanOrEqual(b.d + SPLIT.gap + b.d / 2 + 1e-6);
+      // 가운데 홀로 뜬 거품 없음: 둘째 줄은 2개 이상, 첫 줄은 둘째 줄만큼 이상 퍼진다
+      expect(r1.length).toBeGreaterThanOrEqual(2);
+      // 2+2처럼 네모로 쌓이지 않음: 둘째 줄은 3개 이상이거나 첫 줄보다 적다
+      expect(r1.length >= 3 || r1.length < r0.length).toBe(true);
+      expect(Math.max(...r0.map((p) => Math.abs(p.x - g.globe.cx)))).toBeGreaterThanOrEqual(Math.max(...r1.map((p) => Math.abs(p.x - g.globe.cx))) - 1e-6);
+    }
+    for (let n = 1; n <= cap; n++) expect(check(n).pos).toHaveLength(n);
+    // 개수가 늘면 거품은 작아지기만 한다(같은 줄 수 안에서)
+    expect(archLayout(1, g).d).toBeGreaterThanOrEqual(archLayout(6, g).d);
+  });
+  it('지름은 한 줄·두 줄 중 큰 쪽(같으면 한 줄): 메모 1 → 40개로 늘 때 지름이 커지지 않는다', () => {
+    let prev = Infinity;
+    for (let n = 1; n <= 40; n++) {
+      const a = archLayout(n, g);
+      expect(a.d).toBeLessThanOrEqual(prev);
+      prev = a.d;
     }
   });
-
-  it('카드가 모두 상자 안, 서로·이름표와 겹치지 않는다', () => {
-    for (const n of [1, 7, 16, 34, 60]) {
-      const { k, pos } = ringLayout(n, box);
-      expect(pos).toHaveLength(n);
-      const cw = GLOBE.cardW * k, ch = GLOBE.cardH * k;
-      for (const p of pos) {
-        expect(p.x - cw / 2).toBeGreaterThanOrEqual(box.left - 4);
-        expect(p.x + cw / 2).toBeLessThanOrEqual(box.right + 4);
-        expect(p.y - ch / 2).toBeGreaterThanOrEqual(box.top - 4);
-        expect(p.y + ch / 2).toBeLessThanOrEqual(box.bottom + 4);
-        expect(Math.abs(p.x) >= (GLOBE.labelW + cw) / 2 - 4 || Math.abs(p.y) >= (GLOBE.labelH + ch) / 2 - 4).toBe(true);
-      }
-      for (let i = 0; i < pos.length; i++)
-        for (let j = i + 1; j < pos.length; j++)
-          expect(Math.abs(pos[i]!.x - pos[j]!.x) >= cw - 1 || Math.abs(pos[i]!.y - pos[j]!.y) >= ch - 1).toBe(true);
-    }
+  it('넘치면 담을 수 있는 만큼만(호출한 쪽이 최근 N개 + "+N")', () => {
+    const cap = archCapacity(g);
+    expect(check(40).pos).toHaveLength(cap);
   });
-
-  it('작은 주제는 원래 크기, 큰 주제는 줄여서 담는다', () => {
-    expect(ringLayout(7, box).k).toBe(GLOBE.ringScale);
-    expect(ringLayout(34, box).k).toBeLessThan(1);
+  it('작은 화면(375×667)도 거품이 화면 안·구 밖', () => {
+    const s2 = splitGeom(375, 667, MOTION.bottomPad);
+    const a = archLayout(archCapacity(s2), s2);
+    for (const p of a.pos) {
+      expect(p.x - a.d / 2).toBeGreaterThanOrEqual(0);
+      expect(p.x + a.d / 2).toBeLessThanOrEqual(375);
+      expect(p.y - a.d / 2).toBeGreaterThanOrEqual(s2.top - 1e-6);
+      expect(Math.hypot(p.x - s2.globe.cx, p.y - s2.globe.cy)).toBeGreaterThanOrEqual(s2.globe.r + a.d / 2);
+    }
   });
 });
-describe('pickShown / ringCapacity (큰 주제는 최근 K개 + "+N", D18)', () => {
-  const box = { left: -179, right: 179, top: -398, bottom: 270 };
+
+describe('pickShown (큰 주제는 최근 K개 + "+N", D18)', () => {
+  const cap = 12;
   const memos = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `m${String(i).padStart(2, '0')}`, createdAt: 1000 + i * 10 }));
-  it('칸 수는 상한 이하이고 보통 카드 크기로 화면에 들어간다', () => {
-    const cap = ringCapacity(box);
-    expect(cap).toBeGreaterThan(1);
-    expect(cap).toBeLessThanOrEqual(GLOBE.maxOpenCards);
-    expect(ringLayout(cap, box).k).toBe(GLOBE.ringScale);
-  });
-  it('34개 → 가장 최근 K개를 오래된 순으로, N = 34 − K', () => {
-    const cap = ringCapacity(box);
-    const all = memos(34);
+  it('40개 → 가장 최근 K개를 오래된 순으로, N = 40 − K', () => {
+    const all = memos(40);
     const { shown, hidden } = pickShown([...all].reverse(), cap);
     const K = cap - 1;
     expect(shown).toHaveLength(K);
-    expect(hidden).toBe(34 - K);
-    expect(shown.map((m) => m.id)).toEqual(all.slice(34 - K).map((m) => m.id));
+    expect(hidden).toBe(40 - K);
+    expect(shown.map((m) => m.id)).toEqual(all.slice(40 - K).map((m) => m.id));
   });
   it('칸 수 이하이면 전부, "+N" 없음', () => {
-    const cap = ringCapacity(box);
     for (const n of [1, 5, cap]) {
       const { shown, hidden } = pickShown(memos(n), cap);
       expect(shown).toHaveLength(n);
