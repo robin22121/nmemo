@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { afterDelete, FOCUS, fitSquare, josaWa, nearestDot, spacedPositions } from '../../src/core/layout/focus';
+import { afterDelete, FOCUS, fitSquare, josaWa, nearestDot, spacedPositions, stepMemo } from '../../src/core/layout/focus';
 import { SHAPE_IDS } from '../../src/core/shapes';
 
 // 390×844 화면, 가장자리 18px 안쪽 상자, 정중앙 카드(최대 높이 40%)를 피한다
@@ -51,6 +51,16 @@ describe('포커스 도우미', () => {
     expect(afterDelete(['a', 'b', 'c'], 'c')).toBe('b');
     expect(afterDelete(['a'], 'a')).toBeNull();
     expect(afterDelete(['a'], 'x')).toBeNull();
+  });
+
+  it('앞뒤: 끝에서 처음으로, 처음에서 끝으로 돌고, 1개 이하면 null', () => {
+    expect(stepMemo(['a', 'b', 'c'], 'b', 1)).toBe('c');
+    expect(stepMemo(['a', 'b', 'c'], 'c', 1)).toBe('a');
+    expect(stepMemo(['a', 'b', 'c'], 'a', -1)).toBe('c');
+    expect(stepMemo(['a', 'b'], 'b', 1)).toBe('a');
+    expect(stepMemo(['a', 'b'], 'a', -1)).toBe('b');
+    expect(stepMemo(['a'], 'a', 1)).toBeNull();
+    expect(stepMemo(['a', 'b'], 'x', 1)).toBeNull();
   });
 
   it('조사: 받침 있으면 과, 없으면 와', () => {

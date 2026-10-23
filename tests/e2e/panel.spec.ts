@@ -168,13 +168,26 @@ test('포커스: 같은 주제 메모 = 점(카드 밖·화면 안·간격 ≥ 2
   await page.mouse.move(W / 2 + 30, H - 60, { steps: 6 });
   await page.mouse.up();
   await expect(focus).toHaveAttribute('data-focus-memo', order[1]!);
-  // 마지막에서 다음은 그대로
+  // 마지막에서 다음 = 처음으로 돈다
   const lastId = order[order.length - 1]!;
   await rested(page);
   await page.locator(`[data-testid="focus-dot"][data-memo-id="${lastId}"]`).click({ force: true });
   await expect(focus).toHaveAttribute('data-focus-memo', lastId);
+  await rested(page);
   await swipe(page, -80);
-  await page.waitForTimeout(300);
+  await expect(focus).toHaveAttribute('data-focus-memo', order[0]!);
+  await expect(page.getByTestId('focus-bar')).toHaveAttribute('data-index', '0');
+  // 처음에서 이전 = 마지막으로 돈다
+  await rested(page);
+  await swipe(page, 80);
+  await expect(focus).toHaveAttribute('data-focus-memo', lastId);
+  await expect(page.getByTestId('focus-bar')).toHaveAttribute('data-index', String(order.length - 1));
+  // 화살표 키도 돈다
+  await rested(page);
+  await page.keyboard.press('ArrowRight');
+  await expect(focus).toHaveAttribute('data-focus-memo', order[0]!);
+  await rested(page);
+  await page.keyboard.press('ArrowLeft');
   await expect(focus).toHaveAttribute('data-focus-memo', lastId);
   await expect(page.getByTestId('memo-focus')).toHaveAttribute('data-phase', 'open');
 });
@@ -282,6 +295,16 @@ test('포커스: 메모 1개 주제 = 점 0개, 2개 = 점 2개(§4-2)', async (
   await openFocus(page, a!);
   await expect(page.getByTestId('focus-dot')).toHaveCount(2);
   await expect(page.getByTestId('focus-dust')).toHaveCount(0);
+  // 2개: 다음·이전 모두 다른 하나로
+  await swipe(page, -80);
+  await expect(page.getByTestId('memo-sheet')).toHaveAttribute('data-focus-memo', b!);
+  await rested(page);
+  await swipe(page, -80);
+  await expect(page.getByTestId('memo-sheet')).toHaveAttribute('data-focus-memo', a!);
+  await rested(page);
+  await swipe(page, 80);
+  await expect(page.getByTestId('memo-sheet')).toHaveAttribute('data-focus-memo', b!);
+  await rested(page);
   await tapEmpty(page);
   await expect(page.getByTestId('memo-focus')).toHaveCount(0);
 
@@ -290,6 +313,11 @@ test('포커스: 메모 1개 주제 = 점 0개, 2개 = 점 2개(§4-2)', async (
   await openFocus(page, a!);
   await expect(page.getByTestId('focus-dot')).toHaveCount(0);
   await expect(page.getByTestId('focus-bar')).toHaveCount(0);
+  // 1개: 밀어도 그대로(자기 자신으로 돌지 않는다)
+  await swipe(page, -80);
+  await page.waitForTimeout(300);
+  await expect(page.getByTestId('memo-sheet')).toHaveAttribute('data-focus-memo', a!);
+  await expect(page.getByTestId('memo-focus')).not.toHaveAttribute('data-revealed', '1');
 });
 
 test('포커스: 빈 곳 탭 → 마지막으로 본 메모 카드 자리로 줄어들고, 포커스 중에도 배경 주제는 돈다(§4-3)', async ({ page }) => {

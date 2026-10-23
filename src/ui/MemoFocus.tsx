@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type RefObject } from 'react';
 import { flushSync } from 'react-dom';
 import { connectedTopics, visibleMoves } from '../core/connections';
-import { afterDelete, FOCUS, fitSquare, josaWa, nearestDot, REVEAL, spacedPositions } from '../core/layout/focus';
+import { afterDelete, FOCUS, fitSquare, josaWa, nearestDot, REVEAL, spacedPositions, stepMemo } from '../core/layout/focus';
 import { BASIC_EMOTIONS } from '../core/palette';
 import { getShape, sampleShape, SHAPE_MIN_MEMOS, type Box as ShapeBox, type Rect } from '../core/shapes';
 import { MEMO_KINDS } from '../core/types';
@@ -851,7 +851,7 @@ export function MemoFocus({ memoId, onClose, onSelect, notify }: Props) {
   const go = useCallback(
     (delta: number) => {
       const { order: o, shown: id } = live.current;
-      const next = id ? o[o.indexOf(id) + delta] : undefined;
+      const next = id ? stepMemo(o, id, delta) : null;
       if (!next) return false;
       void travel(next, delta);
       return true;
@@ -910,7 +910,7 @@ export function MemoFocus({ memoId, onClose, onSelect, notify }: Props) {
     if (!showSky || dots.length < 2) return;
     reveal.set(Math.max(g.r0, Math.min(1, Math.abs(dx) / REVEAL.dragPx)));
     const { order: o, shown: cur } = live.current;
-    const t = cur && Math.abs(dx) >= FOCUS.swipe ? (o[o.indexOf(cur) + (dx < 0 ? 1 : -1)] ?? null) : null;
+    const t = cur && Math.abs(dx) >= FOCUS.swipe ? stepMemo(o, cur, dx < 0 ? 1 : -1) : null;
     if (t !== aimRef.current) {
       aimRef.current = t;
       setAim(t);

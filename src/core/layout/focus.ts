@@ -74,6 +74,13 @@ export function afterDelete(order: readonly string[], id: string): string | null
   return order[i + 1] ?? order[i - 1] ?? null;
 }
 
+/** 앞뒤 메모(끝에서 처음으로, 처음에서 끝으로 돈다). 메모가 2개 미만이거나 id가 없으면 null */
+export function stepMemo(order: readonly string[], id: string, delta: number): string | null {
+  const i = order.indexOf(id);
+  if (i < 0 || order.length < 2) return null;
+  return order[(((i + delta) % order.length) + order.length) % order.length] ?? null;
+}
+
 /** 가장 가까운 점(누르는 영역 반경 안) */
 export function nearestDot(dots: readonly { id: string; x: number; y: number }[], x: number, y: number, r: number = FOCUS.hit / 2): string | null {
   let best: { id: string; d: number } | null = null;
