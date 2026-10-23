@@ -14,9 +14,11 @@
 | 2026-10-22 | 5cb6353 | 해당 없음 | Dexie v2(선택 필드 lockedAt·organizedAt) | 0단계: 평면 보드·Firebase 삭제, ⋯ 메뉴(내보내기·가져오기·오분류율), 문서 체계 | 같음 |
 | 2026-10-22 | a6edae4 | 해당 없음 | Dexie v2 | 빈 하늘 탭 쓰기(D30, 이후 취소), 홈 화면 앱 크기 0 측정 대응(U1), 메뉴 진단 줄 | 같음 |
 | 2026-10-23 | ff0c227 | 해당 없음 | Dexie v2 | 배경 주제 계속 자전(D31), 아래 가운데 +·길게 누르면 백업 패널·⋯ 메뉴 삭제(D32), 주제 옆 + 삭제·주제 칩(D33) | 같음 |
+| 2026-10-23 | 9acd3aa | 해당 없음 | Dexie v2(Topic.shape·shapeReason 선택 필드) | 주제 모양 12개·AI 모양 선택, 밀고 난 뒤 감속(D34), 메모 포커스 화면·넘길 때 모양 드러내기(F1~F10), 로그인은 /api만 + 앱 안 로그인 칸(U2) | 같음 |
 
 ## 운영 환경 메모 (배포가 아닌 상태)
 
 - 2026-10-22 Vercel 환경변수 `ANTHROPIC_API_KEY`(Production·Preview, 채팅 노출 키 — 교체 대기), `APP_LOGIN_ID`·`APP_LOGIN_PASSWORD`(Production·Preview).
 - GitHub `main` push = 운영 자동 배포(Vercel Git 연결).
+- 2026-10-23 middleware matcher `/api/:path*` — 앱 화면 파일은 무인증, /api만 Basic(앱이 Authorization 헤더로 보냄).
 - 2026-10-22 Vercel 방화벽 규칙 `api-rate-limit` 게시: `/api` 경로 IP당 3600초 150회(fixed_window), 초과 시 429. 끄기: `vercel firewall rules` → 비활성화 후 `vercel firewall publish`.
