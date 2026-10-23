@@ -142,6 +142,9 @@ const MEASURE_RETRIES = 60;
 /** 접힌 점에서 펼친 칸으로 갈 때 카드 크기(펼침 0 근처) */
 const DOT_CARD = 0.16;
 
+/** 떠오름이 이 값을 넘어야 카드 고리가 피어나기 시작한다(D36) */
+const CARD_FROM = 0.65;
+
 const smooth01 = (x: number) => {
   const c = Math.max(0, Math.min(1, x));
   return c * c * (3 - 2 * c);
@@ -582,12 +585,45 @@ export class GlobeEngine {
       vp,
       block,
     );
+    // 두 주제가 함께 떠 있을 때(끌어 바꾸는 중·탭 전환) 이름표 글자가 겹치지 않게(D36):
+    // 끄는 중이면 경도 순서대로(앞 주제 왼쪽·다가오는 주제 오른쪽) 좌우로 벌리고, 그래도 겹치는 만큼 덜 뜬 쪽 글자를 흐린다
+    const sx = this.items.map(() => 0);
+    const tagAlpha = this.items.map(() => 1);
+    let a = -1, b = -1;
+    lifts.forEach((l, i) => {
+      if (l <= 0.001) return;
+      if (a < 0 || l > lifts[a]!) [a, b] = [i, a];
+      else if (b < 0 || l > lifts[b]!) b = i;
+    });
+    if (a >= 0 && b >= 0) {
+      const at = (i: number) => {
+        const p = ps[i]!, e = smooth01(lifts[i]!), ts = this.tagSizeOf(this.items[i]!), sc = p.scale + (1 - p.scale) * e;
+        return { x: p.x + (lx - p.x) * e, y: p.y + (ly - p.y) * e, w: ts.w * sc, h: ts.h * sc };
+      };
+      const ref = this.phi + (this.steer ? this.fOff : 0);
+      const [l, r] = wrapDeg(this.items[a]!.lambda - ref) <= wrapDeg(this.items[b]!.lambda - ref) ? [a, b] : [b, a];
+      const L = at(l), R = at(r);
+      if (this.steer && Math.abs(L.y - R.y) < (L.h + R.h) / 2) {
+        const need = Math.max(0, (L.w + R.w) / 2 + 6 - (R.x - L.x)) * smooth01(Math.min(lifts[l]!, lifts[r]!) / 0.35);
+        sx[l] = -need / 2;
+        sx[r] = need / 2;
+      }
+      // 남은 겹침 비율(작은 상자 기준)만큼 덜 뜬 쪽 글자를 흐린다. 겹치지 않으면 그대로
+      const ox = Math.max(0, Math.min(L.x + sx[l]! + L.w / 2, R.x + sx[r]! + R.w / 2) - Math.max(L.x + sx[l]! - L.w / 2, R.x + sx[r]! - R.w / 2));
+      const oy = Math.max(0, Math.min(L.y + L.h / 2, R.y + R.h / 2) - Math.max(L.y - L.h / 2, R.y - R.h / 2));
+      const ov = Math.min(1, (ox * oy) / Math.max(1, Math.min(L.w * L.h, R.w * R.h)));
+      tagAlpha[b] = 1 - ov * (1 - smooth01((lifts[b]! - 0.05) / 0.3));
+    }
     this.items.forEach((it, i) => {
       const p = ps[i]!;
       const lift = lifts[i]!;
       const e = smooth01(lift);
-      let x = p.x + (lx - p.x) * e, y = p.y + (ly - p.y) * e;
+      let x = p.x + (lx - p.x) * e + sx[i]!, y = p.y + (ly - p.y) * e;
       let scale = p.scale + (1 - p.scale) * e;
+      if (it.tag) {
+        const ta = tagAlpha[i]! >= 0.999 ? '' : tagAlpha[i]!.toFixed(3);
+        if (it.tag.style.opacity !== ta) it.tag.style.opacity = ta;
+      }
       if (this.settled && lift === 1) {
         // 멈춘 펼친 주제는 정수 픽셀·정확한 배율로 다시 그려 글자 선명
         scale = 1;
@@ -605,16 +641,23 @@ export class GlobeEngine {
       if (st.lod !== lod) it.el.dataset.lod = lod;
       if (st.p !== lift) it.el.dataset.lift = lift.toFixed(3);
       if (lod === 'open' && (Math.abs(st.p - lift) > 0.0005 || st.lod !== 'open')) {
-        // 이름표 자리 ↔ 둘레 칸. 카드마다 조금씩 시차(빨려 들어갈 때 바깥 칸부터)
+        // 이름표 자리 ↔ 둘레 칸. 카드마다 조금씩 시차(빨려 들어갈 때 바깥 칸부터).
+        // 카드는 떠오름 끝 부분(0.65~1)에서만 피어난다(D36: 끄는 중간에는 이름표만 움직여 고리 두 개가 엉키지 않게)
         const n = it.cards.length;
+        const cl = smooth01((lift - CARD_FROM) / (1 - CARD_FROM));
+        const co = cl.toFixed(3);
         it.cards.forEach((c, j) => {
-          const ce = smooth01(lift * 1.3 - (0.3 * j) / Math.max(1, n));
+          if (c.el.style.opacity !== co) c.el.style.opacity = co;
+          const ce = smooth01(cl * 1.3 - (0.3 * j) / Math.max(1, n));
           const cs = DOT_CARD + (it.k - DOT_CARD) * ce;
           const cx = c.dx + (c.rx - c.dx) * ce, cy = c.dy + (c.ry - c.dy) * ce;
           c.el.style.transform = `translate3d(${cx.toFixed(1)}px, ${cy.toFixed(1)}px, 0) scale(${cs.toFixed(3)})`;
         });
       } else if (lod !== 'open' && st.lod === 'open') {
-        for (const c of it.cards) c.el.style.transform = `translate3d(${c.dx}px, ${c.dy}px, 0)`;
+        for (const c of it.cards) {
+          c.el.style.transform = `translate3d(${c.dx}px, ${c.dy}px, 0)`;
+          c.el.style.opacity = '';
+        }
       }
       this.state.set(it.el, { lod, p: lift });
     });

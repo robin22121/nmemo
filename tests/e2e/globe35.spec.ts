@@ -277,14 +277,25 @@ test('D36 집중 상태 끌기: 이웃 주제가 끄는 만큼 떠오르고(중�
   console.log(`D36 mid-drag lifts=${JSON.stringify(partial)}`);
   expect(partial.length).toBe(2);
   expect(partial.map(([id]) => id)).toContain(old);
+  // 중간에는 카드가 거의 안 보이고(이름표만 움직임), 두 이름표 글자는 겹치지 않는다
+  const midView = await page.evaluate((ids) =>
+    ids.map((id) => {
+      const el = document.querySelector<HTMLElement>(`.g-cluster[data-topic-id="${id}"]`)!;
+      const tag = el.querySelector<HTMLElement>('.g-tag')!;
+      return { cards: [...el.querySelectorAll<HTMLElement>('.g-card')].map((c) => Number(getComputedStyle(c).opacity)), tag: tag.getBoundingClientRect().toJSON() as DOMRect, tagOp: Number(getComputedStyle(tag).opacity) };
+    }), partial.map(([id]) => id));
+  for (const v of midView) for (const o of v.cards) expect(o).toBeLessThanOrEqual(0.25);
+  const [ta, tb2] = midView as [typeof midView[0], typeof midView[0]];
+  const overlap = ta.tag.left < tb2.tag.right && tb2.tag.left < ta.tag.right && ta.tag.top < tb2.tag.bottom && tb2.tag.top < ta.tag.bottom;
+  console.log(`D36 mid tags overlap=${overlap} op=${ta.tagOp},${tb2.tagOp}`);
+  expect(overlap && ta.tagOp > 0.5 && tb2.tagOp > 0.5).toBe(false);
   // 한 간격(75px)까지 끌면 정면 주제가 바뀐다(손가락은 아직 대고 있음)
   await page.mouse.move(225, 400, { steps: 6 });
-  await page.waitForTimeout(400);
+  // 새 주제 카드를 처음 그리는 프레임이 헤드리스에서 길어(한 번만) 시간 대신 값이 따라올 때까지 기다린다
+  await expect.poll(async () => (await liftsOf(page))[old]!).toBeLessThan(0.1);
   const next = (await board.getAttribute('data-front'))!;
   expect(next).not.toBe(old);
-  const near = await liftsOf(page);
-  expect(near[next]!).toBeGreaterThan(0.9);
-  expect(near[old]!).toBeLessThan(0.1);
+  expect((await liftsOf(page))[next]!).toBeGreaterThan(0.9);
   await page.mouse.up();
   await expect(board).toHaveAttribute('data-settled', '1');
   await expect(board).toHaveAttribute('data-mode', 'focus');
@@ -294,6 +305,7 @@ test('D36 집중 상태 끌기: 이웃 주제가 끄는 만큼 떠오르고(중�
   expect(Object.entries(end).filter(([id, v]) => id !== next && v > 0)).toEqual([]);
   // 새 주제 카드는 보이고 옛 주제 카드는 숨는다
   await expect(page.locator(`.g-cluster[data-topic-id="${next}"] .g-card .card`).first()).toBeVisible();
+  for (const o of await page.locator(`.g-cluster[data-topic-id="${next}"] .g-card`).evaluateAll((els) => els.map((e) => Number(getComputedStyle(e).opacity)))) expect(o).toBe(1);
   await expect(page.locator(`.g-cluster[data-topic-id="${old}"] .g-card .card`).first()).toBeHidden();
   // 새 주제 이름표가 화면 가운데
   const tb = (await page.locator(`.g-cluster[data-topic-id="${next}"] .g-tag`).boundingBox())!;
