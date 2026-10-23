@@ -25,10 +25,8 @@ interface Cluster {
   topic: Topic;
   lambda: number;
   beta: number;
-  /** 펼쳤을 때 보이는 카드: 펼친 자리(r)와 접힌 점 자리(d), 이름표 중심 기준 */
+  /** 펼쳤을 때 보이는 카드: 펼친 자리(r)와 펼치기 전 모여 있는 자리(d), 이름표 중심 기준 */
   cards: { memo: Memo; rx: number; ry: number; dx: number; dy: number }[];
-  /** 펼쳐도 숨는 메모의 점 자리(접혔을 때만 보임) */
-  dots: { id: string; dx: number; dy: number }[];
   /** 숨긴 수와 "+N" 칩 자리(넘칠 때만) */
   more: { n: number; rx: number; ry: number } | null;
   k: number;
@@ -36,9 +34,9 @@ interface Cluster {
 }
 
 /** 0 측정이면 null: 호출한 쪽이 이전 값을 지킨다 */
-function ringBox(el?: HTMLElement | null, inset = 0): RingBox | null {
+function ringBox(el?: HTMLElement | null, inset = 0, insetTop = 0): RingBox | null {
   const { w, h } = el ? measureBoard(el) : { w: window.innerWidth, h: window.innerHeight };
-  return w && h ? boxOf(w, h, inset) : null;
+  return w && h ? boxOf(w, h, inset, insetTop) : null;
 }
 
 /** 정돈된 메모: 쓰기 칸 자리(대기 칩)에서 제 주제의 고리 칸으로 포물선 비행 */
@@ -112,8 +110,8 @@ function FlightCard({ f, onLand }: { f: Flight; onLand: (f: Flight) => void }) {
 }
 
 /**
- * 지구본(천구) 보드(앱의 보드 화면). 주제가 화면 위아래 전체에 별처럼 흩어져 있고
- * 좌우로 돌리면 시선 높이가 다가오는 주제를 따라간다. 정가운데 가까운 주제일수록 이름표 둘레로 카드가 연속으로 펼쳐진다.
+ * 지구본 보드(앱의 보드 화면, D35). 화면 안에 통째로 보이는 작은 구 위에 주제가 점·이름표로 놓이고 구는 세로축으로만 돈다.
+ * 주제를 누르면 그 주제가 구에서 떠올라 화면 가운데에서 카드를 펼치고, 구는 뒤에서 작고 연하게 계속 돈다.
  * 회전은 GlobeEngine이 DOM에 직접 쓰고, React는 데이터·화면 크기가 바뀔 때만 다시 그린다.
  */
 export function GlobeBoard({
@@ -173,9 +171,9 @@ export function GlobeBoard({
     let raf = 0;
     const on = (tries = 0) => {
       cancelAnimationFrame(raf);
-      // safe-area 아래 inset: 숨은 상자의 padding-bottom(env)을 읽는다(홈 표시줄이 있는 기기만 0이 아님)
-      const inset = parseFloat(getComputedStyle(insetRef.current!).paddingBottom) || 0;
-      const n = ringBox(rootRef.current, inset);
+      // safe-area inset: 숨은 상자의 padding-bottom·top(env)을 읽는다(홈 표시줄·노치가 있는 기기만 0이 아님)
+      const cs = getComputedStyle(insetRef.current!);
+      const n = ringBox(rootRef.current, parseFloat(cs.paddingBottom) || 0, parseFloat(cs.paddingTop) || 0);
       if (!n) {
         // 0 측정(iOS 홈 화면 앱 콜드 스타트): 이전 값을 지키고 몇 프레임 뒤 다시 잰다
         if (tries < 60) raf = requestAnimationFrame(() => on(tries + 1));
@@ -209,7 +207,7 @@ export function GlobeBoard({
       const pl = place.topics[topic.id];
       const c = layout.clusters[topic.id];
       if (!pl || !c) return [];
-      // 점 구름은 기존 무리 배치를 줄여 쓴다. 펼치면 최근 K개만 오래된 것부터 이름표 둘레 시계방향(12시 시작),
+      // 펼치기 전 자리는 기존 무리 배치를 줄여 쓴다. 펼치면 최근 K개만 오래된 것부터 이름표 둘레 시계방향(12시 시작),
       // 넘치는 만큼은 다음 칸의 "+N" 칩으로(D16·D18)
       const local = Object.entries(layout.cards)
         .filter(([id, p]) => p.topicId === topic.id && byId.has(id))
@@ -217,11 +215,9 @@ export function GlobeBoard({
       const { shown, hidden } = pickShown(local, cap);
       const ring = ringLayout(shown.length + (hidden ? 1 : 0), box);
       const cards = shown.map((l, i) => ({ memo: l.memo, dx: l.dx, dy: l.dy, rx: ring.pos[i]!.x, ry: ring.pos[i]!.y }));
-      const shownIds = new Set(shown.map((l) => l.id));
-      const dots = local.filter((l) => !shownIds.has(l.id)).map(({ id, dx, dy }) => ({ id, dx, dy }));
       const mp = ring.pos[shown.length];
       const more = hidden && mp ? { n: hidden, rx: mp.x, ry: mp.y } : null;
-      return [{ topic, lambda: pl.lambda, beta: pl.beta, cards, dots, more, k: ring.k, count: local.length }];
+      return [{ topic, lambda: pl.lambda, beta: pl.beta, cards, more, k: ring.k, count: local.length }];
     });
   }, [topics, memos, links, layout, box]);
 
@@ -238,18 +234,27 @@ export function GlobeBoard({
         // 집중 보기: 가운데 주제의 카드 → 메모 상세, "+N" → 그 주제 메모 전체 목록
         if (focus && card && tid === front) return select.current(card);
         if (focus && t.closest('[data-more]') && tid && tid === front) return setListTopic(tid);
-        // 손가락에 가장 가까운 이름표(뒷면 포함, 둘레 16px까지)
+        // 손가락에 가장 가까운 이름표(글자가 보이는 것만, 둘레 16px까지). 없으면 앞면 점(둘레 12px까지)
         let best: { id: string; d: number } | null = null;
+        const near = (b: DOMRect) => Math.hypot(Math.max(b.left - x, 0, x - b.right), Math.max(b.top - y, 0, y - b.bottom));
         for (const [id, r] of els.current) {
+          const lod = r.el?.dataset.lod;
+          if (lod !== 'label' && lod !== 'open') continue;
           const b = r.tag?.getBoundingClientRect();
           if (!b) continue;
-          const d = Math.hypot(Math.max(b.left - x, 0, x - b.right), Math.max(b.top - y, 0, y - b.bottom));
+          const d = near(b);
           if (d <= 16 && (!best || d < best.d)) best = { id, d };
         }
+        if (!best)
+          for (const [id, r] of els.current) {
+            const b = r.el?.dataset.lod === 'dot' ? r.el.querySelector('.g-pt')?.getBoundingClientRect() : undefined;
+            if (!b) continue;
+            const d = near(b);
+            if (d <= 12 && (!best || d < best.d)) best = { id, d };
+          }
         if (best) {
-          // 이름표: 하늘 보기면 그 주제로 돌며 메모가 터져 나오고, 집중 보기면 그 주제로 돌아 집중, 정면 이름표면 메모가 접혀 하늘(D29)
-          if (!focus) e.focusTo(best.id);
-          else if (best.id !== front) e.rotateTo(best.id);
+          // 이름표: 하늘 보기면 그 주제가 떠올라 펼쳐지고, 집중 보기면 그 주제로 바꿔 펼침, 펼친 이름표면 메모가 접혀 구로(D29)
+          if (!focus || best.id !== front) e.focusTo(best.id);
           else {
             select.current(null);
             e.setFocus(false);
@@ -495,10 +500,10 @@ export function GlobeBoard({
       ref={rootRef}
       data-testid="board"
       data-write={writing ? '1' : undefined}
-      data-blur={writing && MOTION.composerBlur ? '1' : undefined}
     >
       <div ref={insetRef} className="g-inset" aria-hidden />
       <div className="g-stage">
+        <div className="g-sphere" aria-hidden />
         {clusters.map((c) => (
           <div key={c.topic.id} className="g-cluster" data-topic-id={c.topic.id} ref={reg(c.topic.id, 'el')} style={{ ['--c' as string]: c.topic.color }}>
             <div className="g-glow" />
@@ -514,17 +519,14 @@ export function GlobeBoard({
                   <CardFace memo={memo} onToggleDone={(mid, d) => void setDone(mid, d)} />
                   <CardMarks conn={conns.get(memo.id)} moved={moved.has(memo.id)} colorOf={colorOf} />
                 </div>
-                <i className="g-dot" />
               </div>
-            ))}
-            {c.dots.map(({ id, dx, dy }) => (
-              <i key={id} className="g-dot g-dot-only" style={{ transform: `translate3d(${dx}px, ${dy}px, 0)` }} />
             ))}
             {c.more && (
               <div className="g-card g-more" data-more ref={regCard(`more:${c.topic.id}`)} style={{ transform: 'translate3d(0, 0, 0)' }}>
                 <span>+{c.more.n}</span>
               </div>
             )}
+            <i className="g-pt" />
             <div className="g-tag" ref={reg(c.topic.id, 'tag')} data-topic-label>
               {c.topic.name}
             </div>

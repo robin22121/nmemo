@@ -1,31 +1,37 @@
 import type { LayoutInput } from './clusters';
 
 /**
- * 지구본(천구) 보드(앱의 보드 화면)의 배치·투영 상수. 폰에서 느낌을 보며 손으로 조절한다.
- * 각도는 모두 도(°) 단위. 주제는 구 표면 위 점(경도 λ, 위도 β), 보는 방향은 (φ 좌우, θ 위아래).
+ * 지구본 보드(앱의 보드 화면)의 배치·투영 상수(D35: 화면 안의 작은 지구본). 폰에서 느낌을 보며 손으로 조절한다.
+ * 각도는 모두 도(°) 단위. 주제는 구 표면 위 점(경도 λ, 위도 β), 구는 세로축으로만 돈다(φ). 카메라는 고정 기울기 tilt.
  */
 export const GLOBE = {
-  /** 주제를 흩는 위도 범위(±). 화면 위아래 전체에 별처럼 퍼지게 */
-  betaMax: 62,
-  /** 시선 위아래 한계(극까지는 닿되 뒤집히지 않게). 끌기는 좌우만, 위아래는 주제 높이를 따라간다 */
-  pitchMax: 70,
-  /** 어안: 화면 중심에서 가장자리(타원 반지름 1)로 갈수록 배율이 fisheyeEdge까지 줄어든다 */
-  fisheyeEdge: 0.65,
-  fisheyeReach: 0.8,
-  /** 화면 크기 대비 투영 반지름(가로·세로) */
-  rxFrac: 0.62,
-  ryFrac: 0.42,
-  /** 크기: 정면, 60° 떨어짐, 뒷면 */
+  /** 위도 층(±50° 안). 주제가 bands4From개 미만이면 3층, 그 이상이면 4층. 층마다 경도는 고르게 */
+  bands3: [-32, 0, 32],
+  bands4: [-42, -14, 14, 42],
+  bands4From: 8,
+  /** 고정 기울기: 위에서 살짝 내려다본다(북쪽이 조금 보인다) */
+  tilt: 12,
+  /** 구 반지름 = 화면 폭/2 − sideMargin(높이가 모자라면 높이로) */
+  sideMargin: 18,
+  /** 깊이 z(1 앞 · 0 테두리 · −1 뒤)에 따른 크기와 투명도. 정사영이라 위치는 그대로, 크기·투명도만 z로 */
   scaleFront: 1,
-  scaleSide: 0.45,
-  scaleBack: 0.3,
-  /** 투명도: 정면, 60°, 90°, 뒷면(105° 너머). 옆 이름표는 또렷하게, 뒷면도 흐리지만 보이게 */
+  scaleLimb: 0.6,
+  scaleBack: 0.45,
   opacityFront: 1,
-  opacitySide: 0.85,
-  opacityEdge: 0.75,
-  opacityBack: 0.4,
-  /** 이 각도 안이면 '정면' */
-  frontDeg: 20,
+  opacityLimb: 0.55,
+  opacityBack: 0.18,
+  /** 이름표 기본 글자(px)와 최소 글자(px). 배율 × labelPx < labelMinPx이면 글자를 숨기고 점만 */
+  labelPx: 15,
+  labelMinPx: 11,
+  /** 구 가장자리: |x − cx| > labelEdge·R이면 글자를 숨긴다 */
+  labelEdge: 0.8,
+  /** 이름표끼리 이만큼(px) 떨어져야 둘 다 글자. 겹치면 뒤쪽(z 작은) 것을 점으로 */
+  labelGap: 2,
+  /** 펼친 카드 둘레 여유(px): 뒤 지구본 이름표가 이 안에 들면 글자를 숨긴다 */
+  cardGap: 4,
+  /** 집중 상태(D19·D31): 뒤 지구본 반지름 배율과 투명도 배수(D28 0.55) */
+  focusZoom: 0.72,
+  focusDim: 0.55,
   /** 펼침: 화면 중심에서 이 각도 안이면 다 펼침(1), 이 각도 밖이면 이름표+점(0). 사이는 부드럽게 */
   expandFull: 8,
   expandNone: 35,
@@ -37,12 +43,9 @@ export const GLOBE = {
   labelW: 140,
   labelH: 40,
   ringScale: 0.88,
-  /** 집중 보기에서 펼치지 않은 주제의 투명도(D19, D28에서 0.2 → 0.55)와, 이웃 주제로 넘어갈 때 펼침이 이어지는 구간(φ 진행 비율) */
-  focusDim: 0.55,
-  focusWindow: 0.55,
   /** 펼친 주제에 한 번에 놓는 카드 칸 상한(넘치면 최근 메모 + "+N", D18) */
   maxOpenCards: 12,
-  /** 접힌 점 구름은 기존 무리 배치를 이만큼 줄여 쓴다 */
+  /** 펼치기 전 카드가 모여 있는 자리: 기존 무리 배치를 이만큼 줄여 쓴다(펼칠 때 여기서 터져 나온다) */
   dotSpread: 0.32,
 } as const;
 
@@ -67,8 +70,36 @@ export interface GlobePlace {
 }
 
 /**
+ * 위도 층 × 경도 균등으로 점 n개(결정론). 경도는 360/n 간격 격자(i·360/n)이고, 층마다 둘레(cos β)에 비례한 개수를
+ * 고르게 번갈아 나눠 준다 → 층 안에서도 경도가 거의 고르고, 층끼리는 엇갈려 세로로 줄 서지 않는다.
+ */
+export function bandPoints(n: number): { lambda: number; beta: number }[] {
+  const bands = n >= GLOBE.bands4From ? GLOBE.bands4 : GLOBE.bands3;
+  const w = bands.map((b) => Math.cos(b * RAD));
+  const sum = w.reduce((a, b) => a + b, 0);
+  // 가장 큰 나머지 방식으로 층별 개수
+  const raw = w.map((x) => (n * x) / sum);
+  const cnt = raw.map(Math.floor);
+  const order = raw.map((_, i) => i).sort((a, b) => raw[b]! - cnt[b]! - (raw[a]! - cnt[a]!) || w[b]! - w[a]! || a - b);
+  for (let k = 0, left = n - cnt.reduce((a, b) => a + b, 0); k < left; k++) cnt[order[k % order.length]!]!++;
+  // 경도 격자를 차례로 돌며, 지금까지 받은 비율이 가장 낮은 층에 준다
+  const got = bands.map(() => 0);
+  const pts: { lambda: number; beta: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    let b = -1;
+    for (let j = 0; j < bands.length; j++) {
+      if (got[j]! >= cnt[j]!) continue;
+      if (b < 0 || (got[j]! + 0.5) / cnt[j]! < (got[b]! + 0.5) / cnt[b]!) b = j;
+    }
+    got[b]!++;
+    pts.push({ lambda: wrapDeg((i * 360) / n), beta: bands[b]! });
+  }
+  return pts;
+}
+
+/**
  * 주제마다 구 위 점(λ, β)을 정한다. 같은 입력이면 같은 결과.
- * 1) 위도 ±betaMax 띠에 피보나치 나선으로 고르게 점 n개를 찍는다(이웃끼리 떨어짐, 위아래로 넓게).
+ * 1) 위도 3~4층(±50° 안)에 경도를 고르게 나눠 점 n개를 찍는다(bandPoints).
  * 2) 정면(0,0)에 가장 가까운 점에서 시작해 가장 가까운 점을 이어 가는 길을 만든다.
  * 3) 링크가 강한 주제끼리 이웃하는 순서(사슬)를 그 길에 차례로 얹는다 → 관련 주제가 가까이.
  */
@@ -115,19 +146,12 @@ export function placeTopics(input: LayoutInput): GlobePlace {
     cur = next!;
   }
 
-  // 점: 1~2개는 정면과 그 옆(뒷면 아님), 그 이상은 위도 띠 안 피보나치 나선
+  // 점: 1~2개는 정면과 그 옆(뒷면 아님), 그 이상은 위도 층 × 경도 균등
   const pts: { lambda: number; beta: number }[] = [];
   if (n <= 2) {
     pts.push({ lambda: 0, beta: 0 });
     if (n === 2) pts.push({ lambda: 60, beta: 20 });
-  } else {
-    const zMax = Math.sin(GLOBE.betaMax * RAD);
-    const golden = 180 * (3 - Math.sqrt(5));
-    for (let i = 0; i < n; i++) {
-      const z = zMax * (1 - (2 * i) / (n - 1));
-      pts.push({ lambda: wrapDeg(i * golden), beta: Math.asin(z) / RAD });
-    }
-  }
+  } else pts.push(...bandPoints(n));
   // 길: 정면에 가장 가까운 점부터 가장 가까운 점으로
   const path: typeof pts = [];
   const rest = [...pts];
@@ -146,53 +170,99 @@ export function placeTopics(input: LayoutInput): GlobePlace {
   return { order, topics };
 }
 
-export interface GlobeViewport { cx: number; cy: number; rx: number; ry: number; zoom: number }
+/** 구 중심(cx, cy)과 반지름 r(화면 px) */
+export interface GlobeViewport { cx: number; cy: number; r: number }
 
-/** 화면 크기 → 투영 상수. 중심은 화면 정가운데. zoom<1이면 지구본 전체를 작게 */
-export function globeViewport(width: number, height: number, zoom = 1): GlobeViewport {
-  return { cx: width / 2, cy: height / 2, rx: width * GLOBE.rxFrac * zoom, ry: height * GLOBE.ryFrac * zoom, zoom };
+/**
+ * 화면 크기 → 구. 중심은 아래 + 버튼 자리(reserve)를 뺀 위쪽 공간의 가운데, 반지름은 화면 폭/2 − sideMargin.
+ * 크기를 못 쟀으면(0) 반지름 0(NaN 없음).
+ */
+export function globeViewport(width: number, height: number, reserve = 0): GlobeViewport {
+  const avail = Math.max(0, height - reserve);
+  const r = Math.max(0, Math.min(width / 2 - GLOBE.sideMargin, avail / 2 - GLOBE.sideMargin));
+  return { cx: width / 2, cy: avail / 2, r };
 }
 
 export interface Projection {
   x: number;
   y: number;
+  /** 깊이: 1 정면(구 중심 앞), 0 테두리, −1 뒷면 */
+  z: number;
   scale: number;
   opacity: number;
-  /** 깊이: 1 정면(화면 중심), -1 뒷면. 겹침 순서로 쓴다 */
-  z: number;
-  /** 화면 중심 방향과의 각거리(°) */
-  dist: number;
   /** λ−φ (-180, 180] */
   delta: number;
-  side: 'front' | 'side' | 'back';
 }
 
-// 60°에서 scaleSide가 나오도록 ((z+1)/2)^p 곡선의 지수를 정한다
-const SCALE_POW = Math.log((GLOBE.scaleSide - GLOBE.scaleBack) / (GLOBE.scaleFront - GLOBE.scaleBack)) / Math.log(0.75);
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+/** 깊이 z → 크기(앞 1, 테두리 scaleLimb, 뒤 scaleBack) */
+export function depthScale(z: number): number {
+  return z >= 0 ? lerp(GLOBE.scaleLimb, GLOBE.scaleFront, z) : lerp(GLOBE.scaleLimb, GLOBE.scaleBack, -z);
+}
+
+/** 깊이 z → 투명도(앞 1, 테두리 opacityLimb, 뒤 opacityBack) */
+export function depthOpacity(z: number): number {
+  return z >= 0 ? lerp(GLOBE.opacityLimb, GLOBE.opacityFront, z) : lerp(GLOBE.opacityLimb, GLOBE.opacityBack, -z);
+}
 
 /**
- * 구 위 점(λ, β)을 보는 방향(φ 좌우, θ 위아래)에서 화면에 투영한다.
- * 세로축으로 φ만큼, 가로축으로 θ만큼 돌린 뒤 정사영. 뒷면은 φ를 돌리면 앞면과 반대로 흐른다(내용은 안 뒤집음).
+ * 구 위 점(λ, β)을 세로축 회전 φ와 고정 기울기 tilt로 돌린 뒤 정사영한다.
+ * φ가 줄면 앞면 주제는 왼쪽 → 오른쪽으로 흐른다(왼쪽 테두리에서 나타나 오른쪽 테두리에서 사라짐). 뒷면은 반대로 흐른다.
  */
-export function projectGlobe(lambda: number, beta: number, phi: number, theta: number, vp: GlobeViewport): Projection {
+export function projectGlobe(lambda: number, beta: number, phi: number, vp: GlobeViewport): Projection {
   const delta = wrapDeg(lambda - phi);
   const cb = Math.cos(beta * RAD), sb = Math.sin(beta * RAD);
   const x1 = cb * Math.sin(delta * RAD);
   const y1 = sb;
   const z1 = cb * Math.cos(delta * RAD);
-  const ct = Math.cos(theta * RAD), st = Math.sin(theta * RAD);
+  const ct = Math.cos(GLOBE.tilt * RAD), st = Math.sin(GLOBE.tilt * RAD);
   const y2 = y1 * ct - z1 * st;
   const z = Math.max(-1, Math.min(1, y1 * st + z1 * ct));
-  const x = vp.cx + vp.rx * x1;
-  const y = vp.cy - vp.ry * y2;
-  const scale = (GLOBE.scaleBack + (GLOBE.scaleFront - GLOBE.scaleBack) * Math.pow((z + 1) / 2, SCALE_POW)) * vp.zoom;
-  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-  const opacity =
-    z >= 0.5 ? lerp(GLOBE.opacitySide, GLOBE.opacityFront, (z - 0.5) / 0.5)
-    : z >= 0 ? lerp(GLOBE.opacityEdge, GLOBE.opacitySide, z / 0.5)
-    : lerp(GLOBE.opacityBack, GLOBE.opacityEdge, Math.max(0, 1 + 4 * z));
-  const dist = Math.acos(z) / RAD;
-  return { x, y, scale, opacity, z, dist, delta, side: dist < GLOBE.frontDeg ? 'front' : z >= 0 ? 'side' : 'back' };
+  return { x: vp.cx + vp.r * x1, y: vp.cy - vp.r * y2, z, scale: depthScale(z), opacity: depthOpacity(z), delta };
+}
+
+/** 화면 상자(px) */
+export interface ScreenBox { l: number; t: number; r: number; b: number }
+
+export interface LabelCand {
+  x: number;
+  y: number;
+  z: number;
+  /** 이름표 배율(글자 = labelPx × scale) */
+  scale: number;
+  /** 배율 1일 때 이름표 폭·높이(px) */
+  w: number;
+  h: number;
+}
+
+const overlap = (a: ScreenBox, b: ScreenBox, gap: number) => a.l < b.r + gap && b.l < a.r + gap && a.t < b.b + gap && b.t < a.b + gap;
+
+/** 이름표 상자(화면 px): 점 (x, y)가 가운데 */
+export function labelBox(c: LabelCand): ScreenBox {
+  const hw = (c.w * c.scale) / 2, hh = (c.h * c.scale) / 2;
+  return { l: c.x - hw, t: c.y - hh, r: c.x + hw, b: c.y + hh };
+}
+
+/**
+ * 어느 주제의 이름표 글자를 보일지(나머지는 점만). 앞면(z > 0)이고 글자 ≥ labelMinPx이고 구 가장자리(|x − cx| > labelEdge·R)가 아닌 것.
+ * 가까운(z 큰) 것부터 놓으며 이미 놓인 이름표나 막는 상자(block: 펼친 카드)와 겹치면 점으로 접는다.
+ */
+export function planLabels(cands: LabelCand[], vp: GlobeViewport, block: ScreenBox[] = []): boolean[] {
+  const out = cands.map(() => false);
+  const idx = cands.map((_, i) => i).sort((a, b) => cands[b]!.z - cands[a]!.z || a - b);
+  const placed: ScreenBox[] = [];
+  for (const i of idx) {
+    const c = cands[i]!;
+    if (c.z <= 0 || c.scale * GLOBE.labelPx < GLOBE.labelMinPx - 1e-6) continue;
+    if (Math.abs(c.x - vp.cx) > GLOBE.labelEdge * vp.r) continue;
+    const box = labelBox(c);
+    if (placed.some((p) => overlap(p, box, GLOBE.labelGap))) continue;
+    if (block.some((p) => overlap(p, box, 0))) continue;
+    placed.push(box);
+    out[i] = true;
+  }
+  return out;
 }
 
 /** 펼침 정도 e ∈ [0,1]: 화면 중심에서의 각거리에 대한 부드러운 함수 */
@@ -211,69 +281,6 @@ export function snapYaw(phi: number, lambdas: number[]): number {
     if (Math.abs(d) < bd) { bd = Math.abs(d); best = phi + d; }
   }
   return best;
-}
-
-/**
- * 시선 높이 θ는 손가락이 아니라 φ에서 정해진다: 경도 순으로 이웃한 두 주제의 위도를 부드럽게(smoothstep) 잇는다.
- * 주제의 경도에 정확히 오면 그 주제의 위도 → 멈추면 이름표가 정가운데.
- */
-export function pitchAt(phi: number, pts: { lambda: number; beta: number }[]): number {
-  if (pts.length === 0) return 0;
-  const clamp = (v: number) => Math.max(-GLOBE.pitchMax, Math.min(GLOBE.pitchMax, v));
-  const { a, b, t } = bracket(phi, pts);
-  const sm = t * t * (3 - 2 * t);
-  return clamp(pts[a]!.beta + (pts[b]!.beta - pts[a]!.beta) * sm);
-}
-
-/** φ를 경도 순으로 감싸는 두 주제(원래 배열 인덱스 a, b)와 a→b 진행 정도 t ∈ [0,1) */
-export function bracket(phi: number, pts: { lambda: number }[]): { a: number; b: number; t: number } {
-  if (pts.length <= 1) return { a: 0, b: 0, t: 0 };
-  const norm = (d: number) => ((d % 360) + 360) % 360;
-  const idx = pts.map((_, i) => i).sort((p, q) => norm(pts[p]!.lambda) - norm(pts[q]!.lambda));
-  const f = norm(phi);
-  let k = idx.length - 1;
-  for (let i = 0; i < idx.length; i++) if (norm(pts[idx[i]!]!.lambda) <= f) k = i;
-  const a = idx[k]!, b = idx[(k + 1) % idx.length]!;
-  const span = norm(pts[b]!.lambda - pts[a]!.lambda) || 360;
-  return { a, b, t: Math.min(1, norm(f - norm(pts[a]!.lambda)) / span) };
-}
-
-const smooth01 = (x: number) => {
-  const c = Math.max(0, Math.min(1, x));
-  return c * c * (3 - 2 * c);
-};
-
-/**
- * 집중 보기(D19)에서 펼침 e: 펼치는 건 φ를 감싸는 두 주제뿐. 떠나는 주제 a는 접히고 다가오는 주제 b는 펼쳐진다.
- * 겹치는 구간을 줄여(focusOverlap) 가운데쯤에서는 둘 다 거의 접힌다. 주제 경도에 멈추면 그 주제만 1, 나머지 0.
- */
-export function focusExpansion(phi: number, pts: { lambda: number }[]): number[] {
-  const out = pts.map(() => 0);
-  if (pts.length === 0) return out;
-  const { a, b, t } = bracket(phi, pts);
-  const w = GLOBE.focusWindow;
-  out[a] = smooth01((1 - t) / w - (1 - w) / w);
-  if (b !== a) out[b] = Math.max(out[b]!, smooth01(t / w - (1 - w) / w));
-  if (pts.length === 1) out[a] = 1;
-  return out;
-}
-
-/**
- * 투명도(D17·D19). sky(f=0): 하늘 기본값 base. focus(f=1): 펼친 정도 e에 따라 dim → 1, 안 펼친 주제는 dim 이하로 흐리게.
- * f는 두 상태 사이를 오가는 진행값(0~1).
- */
-export function topicOpacity(base: number, e: number, f: number): number {
-  const low = Math.min(base, GLOBE.focusDim);
-  const inFocus = low + (1 - low) * e;
-  return base + (inFocus - base) * f;
-}
-
-/** 어안 배율: 화면 중심에서 가장 크고(1) 가장자리로 갈수록 작다. (x,y)는 화면 좌표 */
-export function fisheye(x: number, y: number, vp: { cx: number; cy: number; width: number; height: number }): number {
-  if (!(vp.width > 0) || !(vp.height > 0)) return 1; // 크기를 못 잰 상태: 0/0=NaN 방지
-  const r = Math.hypot((x - vp.cx) / (vp.width / 2), (y - vp.cy) / (vp.height / 2));
-  const t = Math.min(1, r / GLOBE.fisheyeReach);
-  return 1 - (1 - GLOBE.fisheyeEdge) * t * t * (3 - 2 * t);
 }
 
 export interface RingBox { left: number; right: number; top: number; bottom: number }

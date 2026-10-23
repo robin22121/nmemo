@@ -113,7 +113,10 @@ test('지구본: 주제 없이 열린 쓰기 칸은 마지막으로 읽던(정�
   const board = page.getByTestId('board');
   await expect(board).toHaveAttribute('data-settled', '1');
   const first = await board.getAttribute('data-front');
-  // 다른 주제로 돌린다
+  // 하늘 상태에서 다른 주제로 돌린다(집중 상태에서 끌면 뒤 구만 돌고 펼친 주제는 그대로, D35)
+  await page.locator(`.g-cluster[data-topic-id="${first}"] .g-tag`).click();
+  await expect(board).toHaveAttribute('data-mode', 'sky');
+  await expect(board).toHaveAttribute('data-settled', '1');
   await page.mouse.move(300, 400);
   await page.mouse.down();
   await page.mouse.move(120, 400, { steps: 8 });
@@ -532,11 +535,11 @@ test('지구본: 밀고 손을 떼면 그 속도를 이어받아 줄곧 느려�
     const [t0, p0] = tr[j - 1]!, [t1, p1] = tr[j]!;
     return t1 === t0 ? p1 : p0 + ((p1 - p0) * (t - t0)) / (t1 - t0);
   };
-  // 손 뗄 때 손가락 속도: 마지막 100ms 이벤트의 x 기울기(최소제곱) × 0.28°/px(MOTION.degPerPx, 하늘 상태 배율 1)
+  // 손 뗄 때 손가락 속도: 마지막 100ms 이벤트의 x 기울기(최소제곱) × 0.16°/px(MOTION.degPerPx, D35)
   const w = mv.filter((p) => p[0] > mv[mv.length - 1]![0] - 100);
   const mt = w.reduce((a, p) => a + p[0], 0) / w.length, mx = w.reduce((a, p) => a + p[1], 0) / w.length;
   const slope = w.reduce((a, p) => a + (p[0] - mt) * (p[1] - mx), 0) / w.reduce((a, p) => a + (p[0] - mt) ** 2, 0);
-  const vRel = -slope * 1000 * 0.28;
+  const vRel = -slope * 1000 * 0.16;
   expect(vRel).toBeGreaterThan(60);
   const end = tr[tr.length - 1]![0];
   // 헤드리스 프레임·입력 간격 흔들림을 덜려고 100ms 구간으로 본다(곡선 자체의 엄밀한 검사는 단위 테스트 glide.test.ts)

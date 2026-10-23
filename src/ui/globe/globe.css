@@ -1,7 +1,13 @@
-/* 지구본(천구) 보드(앱의 보드 화면). .board의 배경·touch-action:none을 그대로 쓴다. */
+/* 지구본 보드(앱의 보드 화면, D35 화면 안의 작은 구). .board의 배경·touch-action:none을 그대로 쓴다.
+   움직이는 요소에는 filter를 쓰지 않는다(흐림은 투명도·배율만) */
 .g-board { user-select: none; -webkit-user-select: none; }
 .g-stage { position: absolute; inset: 0; isolation: isolate; }
-.g-board[data-blur='1'] .g-stage { filter: blur(6px); }
+/* 구 원판: 은은한 테두리와 왼쪽 위 빛·오른쪽 아래 그늘. 앞면 주제(z-index > 1000)는 위, 뒷면 점은 아래로 비쳐 보인다 */
+.g-sphere {
+  position: absolute; left: 0; top: 0; width: 0; height: 0; border-radius: 50%; pointer-events: none; z-index: 1000;
+  background: radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.62) 0%, rgba(255, 252, 244, 0.42) 34%, rgba(236, 226, 206, 0.46) 72%, rgba(205, 190, 162, 0.5) 100%);
+  box-shadow: inset 0 0 0 1px rgba(150, 132, 104, 0.22), inset -18px -22px 46px rgba(150, 128, 96, 0.13), 0 12px 36px rgba(120, 96, 60, 0.08);
+}
 
 /* 무리 컨테이너: 원점 = 이름표 중심 */
 .g-cluster { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
@@ -11,7 +17,7 @@
 .g-board[data-reduced='1'] .g-cluster { transition: opacity 0.25s ease; }
 /* 펼쳐지는 중인 무리는 카드가 프레임마다 움직여 다시 그려지므로, 도는 동안은 비싼 그림자를 뺀다 */
 .g-board[data-moving='1'] .face { box-shadow: none; }
-/* 펼친 무리의 카드는 어안 때문에 도는 동안 프레임마다 자리·크기가 바뀐다 → 각자 레이어로(무리 전체 다시 그리기 방지) */
+/* 펼친 무리의 카드는 펼쳐지는 동안 프레임마다 자리·크기가 바뀐다 → 각자 레이어로(무리 전체 다시 그리기 방지) */
 .g-board[data-moving='1'] .g-cluster[data-lod='open'] .g-card { will-change: transform; }
 
 .g-glow {
@@ -24,13 +30,15 @@
   color: color-mix(in srgb, var(--c) 45%, var(--ink)); background: rgba(255, 252, 245, 0.88); box-shadow: 0 1px 6px rgba(58, 50, 38, 0.08);
 }
 
-/* 카드: 펼침 e>0이면 카드(엔진이 자리·크기를 씀), 접히면 점 */
+/* 구 위 주제 점. 이름표 글자가 보이면(label) 이름표가 점 자리를 덮는다 */
+.g-pt { pointer-events: none; position: absolute; left: -5px; top: -5px; width: 10px; height: 10px; border-radius: 50%; background: color-mix(in srgb, var(--c) 72%, var(--ink)); }
+.g-cluster[data-lod='label'] .g-pt, .g-cluster[data-lod='open'] .g-pt { display: none; }
+/* 글자를 숨긴 이름표(점·뒷면)는 자리만 남긴다(엔진이 크기를 잰다) */
+.g-cluster[data-lod='dot'] .g-tag, .g-cluster[data-lod='back'] .g-tag { visibility: hidden; pointer-events: none; }
+
+/* 카드: 떠올라 펼친 주제(open)만 카드(엔진이 자리·크기를 씀). 구 위에서는 숨김 */
 .g-card { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
-.g-dot { pointer-events: none; position: absolute; left: -5px; top: -5px; width: 10px; height: 10px; border-radius: 50%; background: color-mix(in srgb, var(--c) 70%, var(--ink)); opacity: 0.55; display: none; }
-.g-cluster[data-lod='dots'] .g-card .card { display: none; }
-.g-cluster[data-lod='dots'] .g-dot { display: block; }
-.g-dot-only { display: none; }
-.g-cluster[data-lod='label'] .g-card, .g-cluster[data-lod='label'] .g-glow { display: none; }
+.g-cluster:not([data-lod='open']) .g-card, .g-cluster:not([data-lod='open']) .g-glow { display: none; }
 
 /* "+N" 칩: 펼친 주제의 다음 칸. 누르면 그 주제 메모 전체 목록 */
 .g-more span {
@@ -39,7 +47,6 @@
   color: color-mix(in srgb, var(--c) 45%, var(--ink)); background: rgba(255, 252, 245, 0.92);
   border: 1.5px solid color-mix(in srgb, var(--c) 45%, transparent); box-shadow: var(--shadow);
 }
-.g-cluster[data-lod='dots'] .g-more, .g-cluster[data-lod='label'] .g-more, .g-cluster[data-lod='label'] .g-dot-only { display: none; }
 
 /* 주제 메모 전체 목록 시트 */
 .tl-backdrop { position: fixed; inset: 0; z-index: 51; background: rgba(40, 34, 24, 0.25); }
@@ -226,4 +233,8 @@
 .g-menu-diag { margin: 0 6px 2px; font-size: 11px; line-height: 1.4; color: var(--ink-soft); opacity: 0.7; word-break: keep-all; }
 @media (prefers-reduced-motion: reduce) { .g-menu { animation: none; } }
 
-.g-inset { position: absolute; left: 0; bottom: 0; width: 0; height: 0; padding-bottom: env(safe-area-inset-bottom, 0px); visibility: hidden; pointer-events: none; }
+.g-inset { position: absolute; left: 0; bottom: 0; width: 0; height: 0; padding-bottom: env(safe-area-inset-bottom, 0px); padding-top: env(safe-area-inset-top, 0px); visibility: hidden; pointer-events: none; }
+
+
+
+

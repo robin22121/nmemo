@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { fisheye, globeViewport } from '../../src/core/layout/globe';
+import { globeViewport, projectGlobe } from '../../src/core/layout/globe';
 import { boxOf, measureBoard } from '../../src/ui/globe/engine';
 
 // U1: 크기 0 측정이 NaN으로 번지지 않는다
@@ -10,11 +10,12 @@ afterEach(() => {
   delete (globalThis as { window?: unknown }).window;
 });
 
-describe('fisheye: 크기 0', () => {
-  it('폭·높이가 0이어도 NaN이 아니라 1', () => {
-    const vp = globeViewport(0, 0);
-    expect(fisheye(0, 0, { cx: vp.cx, cy: vp.cy, width: 0, height: 0 })).toBe(1);
-    expect(fisheye(10, 10, { cx: 0, cy: 0, width: 0, height: 100 })).toBe(1);
+describe('globeViewport: 크기 0', () => {
+  it('폭·높이가 0이어도 NaN이 아니라 반지름 0', () => {
+    const vp = globeViewport(0, 0, 70);
+    expect(vp.r).toBe(0);
+    const q = projectGlobe(40, 20, 0, vp);
+    expect(Number.isNaN(q.x) || Number.isNaN(q.y) || Number.isNaN(q.scale)).toBe(false);
   });
 });
 
@@ -35,7 +36,7 @@ describe('measureBoard: 0은 실패로 다룬다', () => {
 });
 
 describe('boxOf: + 버튼 여백과 safe-area', () => {
-  it('아래 여백 = bottomPad(70) + inset, 위·좌우는 inset과 무관', () => {
+  it('아래 여백 = bottomPad(70) + inset, 위·좌우는 아래 inset과 무관, 위는 위 inset만큼', () => {
     const a = boxOf(390, 844);
     const b = boxOf(390, 844, 34);
     expect(a.bottom).toBe(844 / 2 - 70);
@@ -43,5 +44,6 @@ describe('boxOf: + 버튼 여백과 safe-area', () => {
     expect(b.top).toBe(a.top);
     expect(b.left).toBe(a.left);
     expect(b.right).toBe(a.right);
+    expect(boxOf(390, 844, 34, 47).top).toBe(a.top + 47);
   });
 });

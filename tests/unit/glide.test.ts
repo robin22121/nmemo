@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MOTION } from '../../src/ui/globe/config';
+import { bandPoints } from '../../src/core/layout/globe';
 import { glideTarget, releaseVelocity, springStep } from '../../src/ui/globe/engine';
 
 // D34: 밀고 난 움직임은 손 뗀 속도를 이어받아 처음 빠르고, 정가운데에 가까울수록 서서히 느려진다(튀거나 끊기지 않음)
@@ -55,8 +56,9 @@ describe('glideTarget', () => {
   it('빠르게 밀면 관성으로 멈출 곳(φ + v·inertiaLead)에 가장 가까운 앞쪽 주제로, 빠를수록 멀리', () => {
     const slowish = glideTarget(5, 120, topics);
     const fast = glideTarget(5, 600, topics);
+    // lead = 5 + 120·0.15 = 23 → 30, lead = 5 + 600·0.15 = 95 → 90
     expect(slowish.target).toBe(30);
-    expect(fast.target).toBe(150);
+    expect(fast.target).toBe(90);
     expect(fast.target).toBeGreaterThan(slowish.target);
     for (const g of [slowish, fast]) {
       expect(g.omega).toBeGreaterThanOrEqual(MOTION.glideOmegaMin);
@@ -65,12 +67,15 @@ describe('glideTarget', () => {
   });
 
   it('왼쪽으로 밀면 왼쪽 주제로, 한 바퀴 넘어가도 이어진 각으로', () => {
-    expect(glideTarget(10, -120, topics).target).toBe(-30);
-    expect(glideTarget(350, 600, topics).target).toBe(510);
+    expect(glideTarget(10, -120, topics).target).toBe(0);
+    expect(glideTarget(10, -400, topics).target).toBe(-60);
+    expect(glideTarget(350, 600, topics).target).toBe(450);
   });
 
-  it('느리게 놓으면 가장 가까운 주제(snapOmega)', () => {
-    expect(glideTarget(12, 10, topics)).toEqual({ target: 0, omega: MOTION.snapOmega });
+  it('느리게 놓으면 밀던 방향 앞쪽 가장 가까운 주제, 멈춘 손가락이면 가장 가까운 주제(snapOmega). 되돌아가지 않는다', () => {
+    expect(glideTarget(12, 10, topics)).toEqual({ target: 30, omega: MOTION.snapOmega });
+    expect(glideTarget(18, -10, topics)).toEqual({ target: 0, omega: MOTION.snapOmega });
+    expect(glideTarget(12, 0, topics)).toEqual({ target: 0, omega: MOTION.snapOmega });
     expect(glideTarget(20, 0, topics)).toEqual({ target: 30, omega: MOTION.snapOmega });
   });
 
@@ -97,5 +102,35 @@ describe('glideTarget', () => {
       if (g.omega * Math.abs(g.target - phi) <= 2 * Math.abs(v))
         for (let i = 1; i < tr.length; i++) expect(Math.abs(tr[i]!.v)).toBeLessThanOrEqual(Math.abs(tr[i - 1]!.v) + 1e-9);
     }
+  });
+});
+
+describe('D35 ③ 끌기 390px → 60±5°, 손 뗀 뒤 정지 ≤ 1.5초, 역방향 없음(주제 30개)', () => {
+  it('끄는 동안 회전은 390 × degPerPx = 60±5°', () => {
+    expect(Math.abs(390 * MOTION.degPerPx - 60)).toBeLessThanOrEqual(5);
+  });
+
+  it('어느 자리·속도로 놓아도 1.5초 안에 멈추고 밀던 방향과 반대로 돌지 않는다', () => {
+    const stops = bandPoints(30).map((p) => p.lambda);
+    let worst = 0;
+    for (let phi0 = 0; phi0 < 360; phi0 += 1)
+      for (const dur of [0.12, 0.2, 0.3, 0.5, 0.8, 1.2, 2, 4, 10]) {
+        // 390px를 dur초에 고르게 끌고 놓음(아주 느리면 멈춘 손가락)
+        const v = dur >= 10 ? 0 : (390 * MOTION.degPerPx) / dur;
+        const phi = phi0 + 390 * MOTION.degPerPx;
+        const g = glideTarget(phi, v, stops);
+        if (v) expect((g.target - phi) * Math.sign(v)).toBeGreaterThanOrEqual(0);
+        let x = phi - g.target, vv = v, t = 0;
+        while (!(Math.abs(x) < 0.05 && Math.abs(vv) < 1) && t < 5) {
+          const s = springStep(x, vv, g.omega, 1 / 60);
+          if (v) expect(s.v * Math.sign(v)).toBeGreaterThanOrEqual(-1e-9);
+          if (v) expect(s.x * Math.sign(v)).toBeLessThanOrEqual(1e-9);
+          x = s.x;
+          vv = s.v;
+          t += 1 / 60;
+        }
+        worst = Math.max(worst, t);
+      }
+    expect(worst).toBeLessThanOrEqual(1.5);
   });
 });
