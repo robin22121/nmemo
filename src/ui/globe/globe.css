@@ -24,11 +24,16 @@
   position: absolute; left: -130px; top: -130px; width: 260px; height: 260px; border-radius: 50%; pointer-events: none;
   background: radial-gradient(circle, color-mix(in srgb, var(--c) 34%, transparent) 0%, color-mix(in srgb, var(--c) 14%, transparent) 40%, transparent 68%);
 }
+/* 주제 이름표(D36): 알약 테두리·바탕 없이 글자만. 주제 색 빛(text-shadow)으로 구분하고, 맨 위 얇은 종이빛 테두리로 구 위에서도 읽힌다.
+   누르는 자리는 글자 상자 + 둘레 16px(GlobeBoard onTap) */
 .g-tag {
   position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); transform-origin: 50% 50%; white-space: nowrap; z-index: 1;
-  font-size: 15px; font-weight: 700; letter-spacing: -0.01em; padding: 2px 10px; border-radius: 999px; cursor: pointer;
-  color: color-mix(in srgb, var(--c) 45%, var(--ink)); background: rgba(255, 252, 245, 0.88); box-shadow: 0 1px 6px rgba(58, 50, 38, 0.08);
+  font-size: 15px; font-weight: 700; letter-spacing: -0.01em; padding: 2px 10px; cursor: pointer;
+  color: var(--ink); background: none; border: 0;
+  text-shadow: 0 0 1px rgba(255, 252, 245, 0.95), 0 0 3px color-mix(in srgb, var(--c) 95%, transparent), 0 0 7px color-mix(in srgb, var(--c) 90%, transparent), 0 0 14px color-mix(in srgb, var(--c) 70%, transparent), 0 0 22px color-mix(in srgb, var(--c) 40%, transparent);
 }
+/* 'tint' 안(config LABEL_STYLE): 글자도 주제 색 쪽으로(대비 위해 잉크 절반) */
+.g-board[data-label='tint'] .g-tag { color: color-mix(in srgb, var(--c) 50%, var(--ink)); }
 
 /* 구 위 주제 점. 이름표 글자가 보이면(label) 이름표가 점 자리를 덮는다 */
 .g-pt { pointer-events: none; position: absolute; left: -5px; top: -5px; width: 10px; height: 10px; border-radius: 50%; background: color-mix(in srgb, var(--c) 72%, var(--ink)); }

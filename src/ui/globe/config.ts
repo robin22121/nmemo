@@ -5,6 +5,12 @@ const params = new URLSearchParams(typeof location === 'undefined' ? '' : locati
 /** 앱을 켜면 쓰기 모드(흐린 지구본 앞 큰 쓰기 칸). 시험용으로 `&write=0`이면 바로 보드 */
 export const WRITE_START = params.get('write') !== '0';
 
+/**
+ * 주제 이름표 모양(D36: 알약 테두리 없이 글자 + 주제 색 빛). 사용자가 고를 두 안:
+ * 'shadow' 글자는 모두 같은 잉크색, 주제는 진한 주제 색 빛으로만 구분 · 'tint' 글자도 주제 색 쪽으로 물들이고 같은 빛
+ */
+export const LABEL_STYLE: 'shadow' | 'tint' = 'shadow';
+
 export const MOTION = {
   /** 좌우 끌기 1px당 회전(°) — 화면 폭 390px에 약 60°(D35) */
   degPerPx: 0.16,

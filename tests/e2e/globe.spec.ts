@@ -113,7 +113,7 @@ test('지구본: 주제 없이 열린 쓰기 칸은 마지막으로 읽던(정�
   const board = page.getByTestId('board');
   await expect(board).toHaveAttribute('data-settled', '1');
   const first = await board.getAttribute('data-front');
-  // 하늘 상태에서 다른 주제로 돌린다(집중 상태에서 끌면 뒤 구만 돌고 펼친 주제는 그대로, D35)
+  // 하늘 상태에서 다른 주제로 돌린다
   await page.locator(`.g-cluster[data-topic-id="${first}"] .g-tag`).click();
   await expect(board).toHaveAttribute('data-mode', 'sky');
   await expect(board).toHaveAttribute('data-settled', '1');

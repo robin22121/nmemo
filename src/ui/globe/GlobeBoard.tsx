@@ -15,7 +15,7 @@ import { CardFace, cardText, cardTilt } from '../MemoCard';
 import { useBoardData } from '../useBoardData';
 import { GlobeComposer } from './Composer';
 import { GlobeMenu } from './GlobeMenu';
-import { MOTION, WRITE_START } from './config';
+import { LABEL_STYLE, MOTION, WRITE_START } from './config';
 import { TopicListSheet } from './TopicListSheet';
 import { boxOf, GlobeEngine, measureBoard, type GlobeItem } from './engine';
 import '../board.css';
@@ -500,6 +500,7 @@ export function GlobeBoard({
       ref={rootRef}
       data-testid="board"
       data-write={writing ? '1' : undefined}
+      data-label={LABEL_STYLE}
     >
       <div ref={insetRef} className="g-inset" aria-hidden />
       <div className="g-stage">

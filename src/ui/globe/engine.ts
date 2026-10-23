@@ -152,6 +152,7 @@ const smooth01 = (x: number) => {
  * 프레임마다 무리 컨테이너 N개에 transform·opacity·z-index를 직접 쓰고(React 재렌더 없음), 이름표 글자를 보일지 정한다(planLabels).
  * 집중(펼치기)하면 그 주제만 구에서 떠올라 화면 가운데 고정 레이어로 오고(lift 0→1) 카드가 둘레에 펼쳐진다.
  * 구는 뒤에서 작고 연하게 계속 돈다(D31). 닫으면 구 위 제자리로 돌아간다.
+ * 집중 상태에서 끌면 구가 돌며 펼친 주제는 구로 접혀 돌아가고 정면으로 다가오는 주제가 끄는 만큼 떠올라 펼쳐진다(D36).
  * 손을 떼면 그 속도를 이어받아 관성으로 멈출 곳에 가장 가까운 주제로 감속하며 멈춘다(임계 감쇠 스프링, D34).
  */
 export class GlobeEngine {
@@ -170,6 +171,12 @@ export class GlobeEngine {
   private f = 1;
   /** 주제별 떠오름 진행값(0 구 위 · 1 가운데 레이어) */
   private lifts = new Map<string, number>();
+  /**
+   * 집중 상태에서 끌어 주제를 바꾸는 중(D36). 떠오름은 φ + fOff(집중 경도)가 주제 경도에 얼마나 가까운지로 정한다.
+   * fOff는 끌기 시작할 때 펼친 주제 경도와 φ의 차이(배경 자전으로 벌어진 만큼)이고, 끄는 동안 0으로 줄며 배경 구가 따라 맞춘다
+   */
+  private steer = false;
+  private fOff = 0;
   private w = 0;
   private h = 0;
   /** 쓰기 창·자판이 열린 동안 바뀐 크기(닫힌 뒤 적용: 구가 점프하지 않게) */
@@ -272,6 +279,7 @@ export class GlobeEngine {
     if (wasWrite && !m.write) this.idleAt = performance.now();
     this.paused = !!m.paused;
     this.write = m.write;
+    if (m.write) this.steer = false;
     this.reduced = m.reduced;
     if (m.reduced) this.root.dataset.reduced = '1';
     else delete this.root.dataset.reduced;
@@ -290,6 +298,7 @@ export class GlobeEngine {
 
   /** 집중 ↔ 하늘. 집중하면 정면 주제가 떠올라 가운데서 펼쳐지고, 하늘로 가면 카드가 이름표로 빨려 들어가며 구 위 제자리로 돌아간다 */
   setFocus(on: boolean) {
+    this.steer = false;
     if (on && !this.focus) this.focusId = this.frontIndex() >= 0 ? this.items[this.frontIndex()]!.id : null;
     // 닫을 때는 그 주제가 정면에 오게 구를 돌려 받는다(돌아갈 자리가 보이게)
     if (!on && this.focus && this.focusId) this.rotateTo(this.focusId);
@@ -316,6 +325,7 @@ export class GlobeEngine {
   rotateTo(id: string) {
     const it = this.items.find((x) => x.id === id);
     if (!it || Number.isNaN(this.phi)) return;
+    this.steer = false;
     this.target = this.phi + wrapDeg(it.lambda - this.phi);
     this.omega = MOTION.snapOmega;
     this.startSpring(0);
@@ -330,6 +340,50 @@ export class GlobeEngine {
   /** 지금 φ에서 정면 주제의 인덱스 */
   private frontIndex(): number {
     return frontOf(this.items.map((it) => ({ delta: wrapDeg(it.lambda - this.phi), z: projectGlobe(it.lambda, it.beta, this.phi, { cx: 0, cy: 0, r: 1 }).z })));
+  }
+
+  /** 집중 상태에서 끌기 시작(D36): 지금 펼친 주제가 집중 경도에 오게 fOff를 잡는다 */
+  private startSteer() {
+    if (this.steer || !this.focus || this.write) return;
+    const it = this.items.find((x) => x.id === this.focusId);
+    if (!it) return;
+    this.steer = true;
+    this.fOff = wrapDeg(it.lambda - this.phi);
+  }
+
+  /**
+   * 끄는 동안의 떠오름 목표(D36): 집중 경도 양옆에서 가장 가까운 두 주제만 떠오르고(앞뒤 경도 사이 위치 t로 smoothstep 교차),
+   * 나머지는 0. 같은 경도면 더 앞(z 큰) 주제. 주제 경도에 멈추면 그 주제 1, 나머지 0
+   */
+  private steerTargets(): number[] {
+    const fphi = this.phi + this.fOff;
+    const out = this.items.map(() => 0);
+    let prev = -1, next = -1, dp = -Infinity, dn = Infinity, zp = -Infinity, zn = -Infinity;
+    this.items.forEach((it, i) => {
+      const d = wrapDeg(it.lambda - fphi);
+      const z = projectGlobe(it.lambda, it.beta, fphi, { cx: 0, cy: 0, r: 1 }).z;
+      if (d <= 0) {
+        if (d > dp + 1e-9 || (Math.abs(d - dp) <= 1e-9 && z > zp)) [prev, dp, zp] = [i, d, z];
+      } else if (d < dn - 1e-9 || (Math.abs(d - dn) <= 1e-9 && z > zn)) [next, dn, zn] = [i, d, z];
+    });
+    if (prev < 0 || next < 0) {
+      const only = prev >= 0 ? prev : next;
+      if (only >= 0) out[only] = 1;
+      return out;
+    }
+    const t = -dp / (dn - dp);
+    out[prev] = smooth01(1 - t);
+    out[next] = smooth01(t);
+    return out;
+  }
+
+  /** 끌기로 주제 바꾸기가 끝남: 가장 많이 떠오른 주제가 펼친 주제 */
+  private endSteer() {
+    if (!this.steer) return;
+    const tg = this.steerTargets();
+    const i = tg.indexOf(Math.max(...tg));
+    if (i >= 0) this.focusId = this.items[i]!.id;
+    this.steer = false;
   }
 
   /** 펼침 목표(쓰기 중에는 모두 구 위) */
@@ -362,8 +416,10 @@ export class GlobeEngine {
   private release(v: number) {
     if (Number.isNaN(this.phi)) return;
     const v0 = Math.max(-MOTION.maxVel, Math.min(MOTION.maxVel, v));
-    const g = glideTarget(this.phi, v0, this.items.map((i) => i.lambda));
-    this.target = g.target;
+    // 집중 상태에서 끌었으면 집중 경도(φ + fOff) 기준으로 가장 가까운 주제에 멈춘다(D36)
+    const off = this.steer ? this.fOff : 0;
+    const g = glideTarget(this.phi + off, v0, this.items.map((i) => i.lambda));
+    this.target = g.target - off;
     this.omega = g.omega;
     this.startSpring(v0);
   }
@@ -374,6 +430,7 @@ export class GlobeEngine {
       this.phi = this.target;
       this.vel = 0;
       this.mode = 'idle';
+      this.endSteer();
     } else this.mode = 'spring';
     this.settled = false;
     this.kick();
@@ -394,6 +451,15 @@ export class GlobeEngine {
     const dt = Math.min(0.05, Math.max(0, (t - this.last) / 1000));
     this.last = t;
     let busy = this.mode === 'drag' || this.mode === 'wheel';
+    if (this.steer && this.fOff !== 0 && this.mode !== 'idle') {
+      // 끄는 동안 배경 구가 집중 경도에 맞춰 돈다(떠오른 주제·끄는 손은 그대로): φ + fOff 일정
+      let nf = this.fOff * Math.exp(-dt * 5);
+      if (Math.abs(nf) < 0.01) nf = 0;
+      const dd = this.fOff - nf;
+      this.phi += dd;
+      this.target += dd;
+      this.fOff = nf;
+    }
     if (this.mode === 'spring') {
       const s = springStep(this.phi - this.target, this.vel, this.omega, dt);
       this.phi = this.target + s.x;
@@ -402,6 +468,7 @@ export class GlobeEngine {
         this.phi = this.target;
         this.vel = 0;
         this.mode = 'idle';
+        this.endSteer();
       } else busy = true;
     }
     // 진행값: 뒤 구 축소·흐림(f), 주제별 떠오름(lift). 약 0.4초
@@ -411,14 +478,20 @@ export class GlobeEngine {
       if (Math.abs(this.f - ft) < 0.004) this.f = ft;
       else busy = true;
     }
-    for (const it of this.items) {
-      const cur = this.lifts.get(it.id) ?? 0, lt = this.liftTarget(it.id);
-      if (cur === lt) continue;
-      let nv = cur + (lt - cur) * Math.min(1, dt * 9);
+    // 끄는 중(D36)이면 떠오름은 집중 경도를 따라(손을 바짝 따르게 빨리), 아니면 펼친 주제 1·나머지 0
+    const steerT = this.steer ? this.steerTargets() : null;
+    if (steerT) {
+      const i = steerT.indexOf(Math.max(...steerT));
+      if (i >= 0) this.focusId = this.items[i]!.id;
+    }
+    this.items.forEach((it, i) => {
+      const cur = this.lifts.get(it.id) ?? 0, lt = steerT ? steerT[i]! : this.liftTarget(it.id);
+      if (cur === lt) return;
+      let nv = cur + (lt - cur) * Math.min(1, dt * (steerT ? 16 : 9));
       if (Math.abs(nv - lt) < 0.004) nv = lt;
       else busy = true;
       this.lifts.set(it.id, nv);
-    }
+    });
     // 자전: φ가 줄어 앞면 주제가 왼쪽 → 오른쪽으로 흐른다(왼쪽 테두리에서 나타나 오른쪽 테두리로 사라짐)
     let ambient = false;
     if (this.write && !this.reduced && this.mode === 'idle') {
@@ -530,6 +603,7 @@ export class GlobeEngine {
       const st = this.state.get(it.el) ?? { p: -1 };
       const lod: Lod = lift > 0.001 ? 'open' : p.z <= 0 ? 'back' : shown[i] ? 'label' : 'dot';
       if (st.lod !== lod) it.el.dataset.lod = lod;
+      if (st.p !== lift) it.el.dataset.lift = lift.toFixed(3);
       if (lod === 'open' && (Math.abs(st.p - lift) > 0.0005 || st.lod !== 'open')) {
         // 이름표 자리 ↔ 둘레 칸. 카드마다 조금씩 시차(빨려 들어갈 때 바깥 칸부터)
         const n = it.cards.length;
@@ -620,6 +694,7 @@ export class GlobeEngine {
         if (Math.hypot(e.clientX - start.x, e.clientY - start.y) <= MOTION.tapSlop) return;
         clearLift();
         gesture = 'drag';
+        this.startSteer();
         this.mode = 'drag';
         this.vel = 0;
         samples = [{ t: performance.now(), phi: this.phi }];
@@ -662,6 +737,7 @@ export class GlobeEngine {
       e.preventDefault();
       // 가로·세로 휠 모두 좌우 회전
       const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+      this.startSteer();
       this.mode = 'wheel';
       this.touch();
       this.vel = 0;
