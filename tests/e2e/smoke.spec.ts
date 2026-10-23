@@ -35,10 +35,19 @@ test('데모: 40개 메모가 6개 무리로 보인다', async ({ page }) => {
 test('글 메모를 저장하면 대기 자리에 앉았다가 정돈되어 제 무리로 날아가 붙는다', async ({ page }) => {
   await openDemo(page, true);
   const before = await clusters(page);
+  // Local 분석기는 정돈이 수십 ms라 대기 칩이 잠깐만 뜬다 → 폴링 대신 DOM 변화를 지켜본다
+  await page.evaluate(() => {
+    const w = window as unknown as { __pendingSeen: boolean };
+    w.__pendingSeen = false;
+    new MutationObserver(() => {
+      const el = document.querySelector('[data-testid="pending-card"]');
+      if (el && el.getBoundingClientRect().width > 0) w.__pendingSeen = true;
+    }).observe(document.body, { childList: true, subtree: true, attributes: true });
+  });
   await addText(page, '새로 생긴 카페에서 커피 원두 사오기');
 
   // 즉시 pending으로 저장되어 대기 자리에 나타난다
-  await expect(page.getByTestId('pending-card').first()).toBeVisible({ timeout: 3000 });
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __pendingSeen: boolean }).__pendingSeen), { timeout: 3000 }).toBe(true);
   // 정돈되면 대기 자리에서 사라지고 보드 카드가 41개가 된다
   await expect(info(page)).toHaveAttribute('data-cards', '41', { timeout: 10_000 });
   await expect(page.getByTestId('pending-card')).toHaveCount(0);
