@@ -47,6 +47,14 @@ export interface Analyzer {
   reorganize(req: ReorganizeRequest): Promise<ReorganizeResult>;
 }
 
+/** 분석기가 서버에서 401(로그인 필요)을 받았다. 대기열은 실패로 치지 않고 멈춘다. */
+export class AuthError extends Error {
+  constructor() {
+    super('unauthorized');
+    this.name = 'AuthError';
+  }
+}
+
 export const MAX_TOPICS = 60;
 export const MAX_RECENT = 80;
 export const MAX_RELATED = 5;

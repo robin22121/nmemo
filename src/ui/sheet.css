@@ -165,3 +165,28 @@ button.conn-head::after { content: '›'; font-weight: 400; color: color-mix(in 
 
 .toast { display: flex; align-items: center; gap: 12px; }
 .toast-action { color: #ffd76a; font-weight: 700; padding: 2px 4px; white-space: nowrap; }
+
+/* ── 앱 안 로그인 칸(로그인 범위: /api만 보호): 정가운데 작은 종이 카드, E8 재료 ── */
+.login-back { position: fixed; inset: 0; z-index: 60; background: rgba(246, 241, 231, 0.85); }
+.login-card {
+  --c: #c9c2b0;
+  position: fixed; left: 50%; top: 50%; z-index: 61; transform: translate(-50%, -50%);
+  width: min(320px, calc(100% - 48px)); padding: 20px 18px 16px; display: flex; flex-direction: column; gap: 10px;
+  border-radius: 28px; color: var(--ink);
+  background: radial-gradient(ellipse 120% 70% at 50% 0%, color-mix(in srgb, var(--c) 16%, #fffdf8) 0%, color-mix(in srgb, var(--c) 7%, #fffdf8) 55%, color-mix(in srgb, var(--c) 4%, #fffdf8) 100%);
+  box-shadow: 0 0 40px 12px color-mix(in srgb, var(--c) 18%, transparent), 0 16px 34px rgba(120, 96, 60, 0.13);
+}
+.login-title { margin: 0 2px; font-size: 17px; font-weight: 700; line-height: 1.4; }
+.login-sub { margin: -4px 2px 4px; font-size: 12.5px; line-height: 1.45; color: var(--ink-soft); }
+/* 16px 이상: iOS 사파리가 입력 때 화면을 확대하지 않게 */
+.login-input {
+  width: 100%; padding: 11px 14px; border-radius: 16px; font-size: 16px; outline: none;
+  border: 1px solid var(--line); background: rgba(255, 252, 245, 0.9);
+}
+.login-input:focus { border-color: color-mix(in srgb, var(--c) 60%, var(--ink)); }
+.login-error { margin: 0 4px; font-size: 13px; color: #b4532a; }
+.login-acts { display: flex; gap: 8px; margin-top: 4px; }
+.login-acts button { flex: 1; padding: 11px 0; border-radius: 20px; font-size: 15px; font-weight: 700; }
+.login-later { color: var(--ink-soft); background: rgba(255, 252, 245, 0.7); }
+.login-ok { color: #fffdf8; background: color-mix(in srgb, var(--c) 25%, var(--ink)); }
+.login-ok:disabled { opacity: 0.5; }

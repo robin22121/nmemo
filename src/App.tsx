@@ -6,8 +6,10 @@ import { dexieRepo } from './db/dexieRepo';
 import { moveMemoToTopic } from './db/repo';
 import { getDb } from './db/schema';
 import { motionBus } from './motion/bus';
-import { getQueue } from './organize/runtime';
+import { requestLogin } from './organize/auth';
+import { connectAnalyzer, getQueue } from './organize/runtime';
 import { GlobeBoard } from './ui/globe/GlobeBoard';
+import { LoginSheet } from './ui/LoginSheet';
 import { MemoFocus } from './ui/MemoFocus';
 import { Toast, type ToastState } from './ui/Toast';
 import './ui/input.css';
@@ -62,6 +64,10 @@ export function App() {
       }
     });
     q.start();
+    // 시작할 때 health가 401이면 로그인 칸을 한 번 연다(그전까지 대기열은 401에서 멈춘 채 메모를 pending으로 둔다)
+    void connectAnalyzer().then((r) => {
+      if (r === 'unauthorized') requestLogin();
+    });
     return () => {
       off();
       q.stop();
@@ -93,6 +99,7 @@ export function App() {
         />
         <MemoFocus memoId={selected} onClose={() => setSelected(null)} onSelect={setSelected} notify={notify} />
         <Toast toast={toast} />
+        <LoginSheet />
       </div>
     </MotionConfig>
   );

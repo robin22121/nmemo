@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ImportError } from '../../core/exportImport';
 import { weeklyStats } from '../../core/stats';
 import { importBackup, prepareExport } from '../../db/backup';
+import { clearCredentials, hasCredentials } from '../../organize/auth';
 import { getDb } from '../../db/schema';
 import { PlusIcon } from '../icons';
 import { MOTION } from './config';
@@ -179,6 +180,20 @@ export function GlobeMenu({ tint, notify, probe, onWrite }: { tint?: string; not
             </label>
             <p className="g-menu-note">내보낸 파일을 메신저로 옮기면 메모 전문이 그 회사 서버를 거쳐요.</p>
             <p className="g-menu-stats" data-testid="menu-stats">{statLine}</p>
+            {hasCredentials() && (
+              <button
+                type="button"
+                className="g-menu-logout"
+                data-testid="menu-logout"
+                onClick={() => {
+                  clearCredentials();
+                  setOpen(false);
+                  notify('로그인 정보를 지웠어요');
+                }}
+              >
+                로그인 정보 지우기
+              </button>
+            )}
             <p className="g-menu-diag" data-testid="menu-diag">{diagLine(probe)}</p>
           </div>
         </>

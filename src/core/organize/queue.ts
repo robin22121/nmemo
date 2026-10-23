@@ -2,7 +2,7 @@ import type { Repo } from '../repo';
 import type { Memo } from '../types';
 import { applyResult, type ApplyOutcome } from './apply';
 import { applyReorganize, buildReorganizeRequest, isReorgDue, type ReorgOutcome } from './reorganize';
-import { MAX_RECENT, MAX_TOPICS, type AnalyzeRequest, type Analyzer } from './types';
+import { AuthError, MAX_RECENT, MAX_TOPICS, type AnalyzeRequest, type Analyzer } from './types';
 import { validateReorganize, validateResult } from './validate';
 
 export type QueueEvent =
@@ -41,6 +41,8 @@ export interface QueueOptions {
   now?: () => number;
   /** 온라인 복귀 같은 외부 신호를 연결하는 훅. 해제 함수를 돌려준다. */
   onWakeSignal?: (wake: () => void) => () => void;
+  /** 분석기가 401(AuthError)을 냈을 때. 대기열은 setAnalyzer가 불릴 때까지 멈춘다. */
+  onAuthRequired?: () => void;
 }
 
 /**
@@ -54,6 +56,8 @@ export class OrganizeQueue {
   private listeners = new Set<(e: QueueEvent) => void>();
   private detach: (() => void) | null = null;
   private readonly now: () => number;
+  /** 로그인 필요(401)로 멈춤. 메모는 pending 그대로 둔다 */
+  private paused = false;
   processingId: string | null = null;
 
   constructor(
@@ -108,6 +112,18 @@ export class OrganizeQueue {
     this.wake();
   }
 
+  /** 분석기를 바꾸고(로그인 성공 → Remote, "나중에" → Local) 멈춤을 풀어 다시 돈다 */
+  setAnalyzer(analyzer: Analyzer): void {
+    this.analyzer = analyzer;
+    this.paused = false;
+    this.wake();
+  }
+
+  private pauseForAuth() {
+    this.paused = true;
+    this.opts.onAuthRequired?.();
+  }
+
   private async resetBackoff() {
     for (const m of await this.repo.listMemosByStatus('failed')) await this.repo.updateMemo(m.id, { retryAt: undefined });
   }
@@ -143,6 +159,7 @@ export class OrganizeQueue {
         if (this.timer) clearTimeout(this.timer);
         this.timer = null;
         for (;;) {
+          if (this.paused) break;
           const { memo, nextAt } = await this.pickNext();
           if (memo) {
             await this.process(memo);
@@ -167,7 +184,12 @@ export class OrganizeQueue {
       const result = validateResult(await analyzer.analyze(req), req);
       const outcome = await applyResult(this.repo, memo.id, result, this.now(), req.memo.text);
       if (outcome) this.emit({ type: 'organized', outcome });
-    } catch {
+    } catch (e) {
+      // 로그인 필요: 시도 횟수를 쓰지 않고 pending 그대로 둔 채 멈춘다
+      if (e instanceof AuthError) {
+        this.pauseForAuth();
+        return;
+      }
       const cur = await this.repo.getMemo(memo.id);
       if (cur) {
         const attempts = cur.attempts + 1;
@@ -195,7 +217,11 @@ export class OrganizeQueue {
       const result = validateReorganize(await analyzer.reorganize(req), req);
       const outcome = await applyReorganize(this.repo, due.id, result, t);
       if (outcome?.batchId) this.emit({ type: 'reorganized', outcome });
-    } catch {
+    } catch (e) {
+      if (e instanceof AuthError) {
+        this.pauseForAuth();
+        return true;
+      }
       // 실패하면 이번 간격은 건너뛴다(10분 뒤 다시)
       await this.repo.updateTopic(due.id, { lastReorgAt: t });
     }

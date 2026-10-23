@@ -1,5 +1,8 @@
-// Vercel Routing Middleware: 사이트 전체(정적 앱 + /api/*)를 HTTP Basic Auth로 보호한다.
+// Vercel Routing Middleware: `/api/*`만 HTTP Basic Auth로 보호한다. 앱 화면 파일은 공개(서비스 워커가 새 버전을 받을 수 있게).
+// 앱이 401을 받으면 앱 안 로그인 칸으로 묻고 `Authorization` 헤더로 보낸다.
 // 로컬 `npm run dev`(Vite)에서는 실행되지 않는다.
+export const config = { matcher: ['/api/:path*'] };
+
 const enc = new TextEncoder();
 
 function safeEqual(a: string, b: string): boolean {
@@ -26,8 +29,6 @@ export default function middleware(request: Request): Response {
       // 잘못된 base64 -> 401
     }
   }
-  return new Response('Unauthorized', {
-    status: 401,
-    headers: { 'WWW-Authenticate': 'Basic realm="nmemo", charset="UTF-8"' },
-  });
+  // WWW-Authenticate를 보내지 않는다: 브라우저 기본 로그인 창 대신 앱이 묻는다
+  return Response.json({ error: 'unauthorized' }, { status: 401 });
 }
